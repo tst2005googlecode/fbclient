@@ -265,13 +265,13 @@ parts_meta = {__type = 'fbclient parts'}
 do
 	local DECIMAL_DOT_SYMBOL = ('%1.1f'):format(3.14):sub(2,2)
 	assert(#DECIMAL_DOT_SYMBOL==1)
-	function parts_meta:__tostring(t)
-		return ('%d%s%d'):format(t[1],DECIMAL_DOT_SYMBOL,t[2])
+	function parts_meta:__tostring()
+		return ('%d%s%d'):format(self[1],DECIMAL_DOT_SYMBOL,self[2])
 	end
 end
 
-function parts_meta:__eq(p1,p2)
-	return p1[1] == p2[1] and p1[2] == p2[2]
+function parts_meta:__eq(other)
+	return self[1] == other[1] and self[2] == other[2]
 end
 
 function mkparts(t) return setmetatable(t, parts_meta) end
