@@ -235,7 +235,6 @@ function test_everything(env)
 		print('trace_stop()'); svc:trace_stop(trace_id)
 	end
 
-	--[[
 	test_server_info()
 	test_get_fb_log()
 	test_backup()
@@ -245,18 +244,14 @@ function test_everything(env)
 	test_user_actions()
 	test_rdb_mapping()
 	test_nbackup()
-	]]
 	--this blocks indefinitely: make some traffic on the test database if you wanna see any tracing info.
-	test_trace()
+	--test_trace()
 
 	svc:close()
 
 	return 1,0
 end
 
---local comb = {lib='fbclient',ver='2.5rc3',server_ver='2.0.6'}
---local comb = {lib='fbclient',ver='2.5rc3',server_ver='2.1.3'}
---local comb = {lib='fbembed',ver='2.5.0',server_ver='2.5.0'}
---local comb = {lib='fbembed'}
+--local comb = {{lib='fbembed',ver='2.1.3'}}
 config.run(test_everything,comb,nil,...)
 

@@ -23,6 +23,7 @@
 		* if f is a function, calls f(setup(test_combination))
 		* f() can return ok_num,fail_num; 0,0 is implied if it doesn't
 	test_env:create_test_db() -> attachment; creates the main test db and returns the attachment object
+	test_env:create_test_db2() -> attachment; creates the secondary test db and returns the attachment object
 
 	***** Prerequisites: *****
 
@@ -93,6 +94,7 @@ function init(verbose)
 	require 'ex' --for os.setenv()
 
 	--setup require() to load fbclient from package_dir
+	--TODO: make this bit work again with luarocks 2.0 which doesn't need luarocks.require anymore !
 	if package.loaded['luarocks.require'] then
 		if pcall(require,'fbclient.version') then
 			error('Cannot load fbclient package from '..package_dir..': fbclient is also installed on LuaRocks and luarocks.require was loaded.')
@@ -159,16 +161,15 @@ function init(verbose)
 			assert(kernel32.SetDllDirectoryA(nil) ~= 0, what..'SetDllDirectoryA() error')
 			assert(kernel32.SetDllDirectoryA(path) ~= 0, what..'SetDllDirectoryA() error')
 
-			if libname == 'fbembed'
-				and (version:find('^2.0') or version:find('^2.1'))
-			then
-				--fbembed < 2.5 can't find its root directory by itself
+			--fbembed < 2.5 can't find its root dir by itself
+			if libname == 'fbembed' and (version:find'^2%.0' or version:find'^2%.1') then
 				os.setenv('FIREBIRD',path)
 				assert(os.getenv('FIREBIRD')==path)
 			else
 				os.setenv('FIREBIRD',nil)
 				assert(os.getenv('FIREBIRD')==nil)
 			end
+
 			return path..'\\'..libname..'.dll'
 		end
 
@@ -247,7 +248,7 @@ function setup(comb)
 		firebird_dir = os.getenv('FIREBIRD'),
 		lib = comb.lib,
 		libname = libname,
-		lib_version = comb.ver,
+		ver = comb.ver,
 		database = database,
 		database2 = database2,
 		database_file = database_file,
@@ -272,7 +273,6 @@ Test environemnt for %s v%s%s:
 
 	FIREBIRD:       %s
 	libname:        %s
-	lib_version     %s
 	database_file:  %s
 	database2_file: %s
 	database:       %s
@@ -288,10 +288,9 @@ Test environemnt for %s v%s%s:
 	nbackup_file1:  %s
 
 		]]):format(
-			env.lib, env.lib_version, env.server and ' against '..env.server..' (v'..env.server_ver..')' or '',
+			env.lib, env.ver, env.server and ' against '..env.server..' (v'..env.server_ver..')' or '',
 			env.firebird_dir or '',
 			env.libname,
-			env.lib_version,
 			env.database_file,
 			env.database2_file,
 			env.database,
@@ -388,17 +387,22 @@ end
 
 --test_env methods
 
-function test_env_class:create_test_db()
+function test_env_class:create_test_db(db, dbfile)
 	local fb = require 'fbclient.class'
+	db = db or self.database
+	dbfile = dbfile or self.database_file
 
 	--silently drop the test database in case it's still hanging around
 	pcall(function()
-		local db = fb.attach(self.database, self.username, self.password, nil, nil, nil, self.libname)
+		local db = fb.attach(db, self.username, self.password, nil, nil, nil, self.libname)
 		db:drop()
 	end)
 	--just in case the attachment and/or drop fails for unrelated reasons...
-	os.remove(self.database_file)
-	return fb.create_database(self.database, self.username, self.password, nil, nil, nil, nil, nil, self.libname)
+	os.remove(dbfile)
+	return fb.create_database(db, self.username, self.password, nil, nil, nil, nil, nil, self.libname)
 end
 
+function test_env_class:create_test_db2()
+	return self:create_test_db(self.database2, self.database2_file)
+end
 

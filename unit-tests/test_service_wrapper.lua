@@ -194,6 +194,7 @@ function test_everything(env)
 			pcall(function()
 				api.start(fbapi,sv,svh,'isc_action_svc_delete_user',{isc_spb_sec_username='test_user'})
 			end)
+			pcall(function() wait() end)
 
 			print('**** test_user_actions/add_user ****')
 			api.start(fbapi,sv,svh,'isc_action_svc_add_user',{
@@ -447,8 +448,7 @@ function test_everything(env)
 	return 1,0
 end
 
---local comb = {lib='fbclient',ver='2.5rc3',server='localhost/3206',server_ver='2.0.6'}
---local comb = {lib='fbclient',ver='2.5rc3',server='localhost/3213',server_ver='2.1.3'}
---local comb = {lib='fbembed',ver='2.5rc3',server=nil,server_ver='2.5rc3'}
+--local comb = {{lib='fbembed',ver='2.5.0'}}
+--local comb = {{lib='fbclient',ver='2.0.5',server_ver='2.5.0'}}
 config.run(test_everything,comb,nil,...)
 

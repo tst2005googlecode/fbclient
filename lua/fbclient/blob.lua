@@ -38,11 +38,11 @@
 	xsqlvar:read([buf_size]) -> s; calls open() if blob not opened.
 	xsqlvar:seek(offset,['absolute'|'relative'|'from_tail']) -> offset; calls open() if blob not opened.
 	xsqlvar:segments([buf_size]) -> segment_iterator() -> s; buf_size: nil == 64K-1
-	xsqlvar:write(s,[max_segment_size]); calls create('stream') if blob not opened.
+	xsqlvar:write(s,[max_segment_size]); calls create('stream') if blob not already open.
 
 	xsqlvar:set(s); extended to create a stream-type blob, write a string of arbitrary length to it and close it.
 	xsqlvar:set(t); extended to create a segmented-type blob, write an array of string segments to it and close it.
-	xsqlvar:get() -> extended to return xsqlvar:segments() for a blob.
+	xsqlvar:get() -> extended to return the whole blob as a string.
 
 	*** XSQLVAR INFO API ***
 	xsqlvar:blobinfo(options_t,[info_buf_len]) -> blob_info_t
@@ -293,18 +293,18 @@ function xsqlvar_class:blobtype()
 end
 
 --the setters and getter must be module-bound so they won't get garbage-collected
-function string_setter(self,p,typ,opt)
-	if typ == 'blob' and type(p) == 'string' then --string for blob -> write a stream blob
+function string_setter(self,s,typ,opt)
+	if typ == 'blob' and type(s) == 'string' then --string for blob -> write a stream blob
 		self:create('stream')
-		self:write(p)
+		self:write(s)
 		self:close()
 		return true
 	end
 end
 
-function iterable_setter(self,p,typ,opt)
-	if typ == 'blob' and applicable(p,'__ipairs') then --iterable for blob -> write a segmented blob
-		for i,s in ipairs(p) do
+function iterable_setter(self,t,typ,opt)
+	if typ == 'blob' and applicable(t,'__ipairs') then --iterable for blob -> write a segmented blob
+		for i,s in ipairs(t) do
 			self:create('segmented')
 			self:write(s)
 			self:close()

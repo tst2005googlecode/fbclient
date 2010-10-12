@@ -22,7 +22,7 @@ function test_everything(env)
 end
 
 
---local comb = {lib='fbclient',ver='2.5rc3',server='localhost/3213',server_ver='2.1.3'}
+--local comb = {{lib='fbembed',ver='2.1.3'}}
 config.run(test_everything,comb,nil,...)
 
 

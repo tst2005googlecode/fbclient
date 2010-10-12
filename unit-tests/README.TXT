@@ -8,9 +8,10 @@ or compiled using LuaRocks where not.
 Windows 32bit platforms
 -----------------------
 
-Install the binaries:
+Download and install the binaries:
 
-	unzip win32.zip
+	download http://fbclient.googlecode.com/files/fbclient-unit-tests-win32.zip in this directory
+	unzip fbclient-unit-tests-win32.zip in this directory
 	> cd win32
 	win32> install_servers.bat
 
@@ -18,7 +19,7 @@ The installer will install multiple instances of Firebird server, one of each ve
 configured to listen on 127.0.0.1 port 3205, 3206, 3213, ... respectively, analogous
 server's version number.
 
-Run a test script:
+Run a test script (the bat will use the bundled Lua interpreter):
 
 	> run_test_file.bat test_all.lua
 

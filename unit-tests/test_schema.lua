@@ -53,5 +53,6 @@ function test_everything(env)
 	--profiler.end()
 end
 
-config.run(test_everything,nil,nil,...)
+--local comb = {{lib='fbembed',ver='2.1.3'}}
+config.run(test_everything,comb,nil,...)
 

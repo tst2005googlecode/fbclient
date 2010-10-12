@@ -1,7 +1,7 @@
 --[[
 	Test unit for xsqlvar.lua and decimal_*.lua
 
-	NOTE: blobs and the special SQL_NULL type (fb 2.5+) are not tested here.
+	NOTE: blobs are not tested here.
 
 ]]
 
@@ -123,11 +123,10 @@ function test_everything(env)
 		{sql_type='timestamp',setter='settime',getter='gettime',values=timestamps},
 		{sql_type='date',setter='settime',getter='gettime',values=dates},
 		{sql_type='time',setter='settime',getter='gettime',values=times},
---[[
+
 		{sql_type='decimal(18,9)',setter='setdecnumber',getter='getdecnumber',values=decnumbers},
 		{sql_type='decimal(18,9)',setter='setmapm',getter='getmapm',values=mapm_numbers},
 		{sql_type='decimal(18,9)',setter='setbc',getter='getbc',values=bc_numbers},
-]]
 	}
 
 
@@ -160,6 +159,25 @@ function test_everything(env)
 		end
 		at:commit_all()
 	end
+
+	if
+		not env.server_ver:find'^2%.0'
+		and not env.server_ver:find'^2%.1'
+		and not env.ver:find'^2%.0'
+		and not env.ver:find'^2%.1'
+	then
+		--test SQL_NULL type (fbclient and fbserver 2.5+)
+		at:exec_immediate('create table test_sql_null(c integer)')
+		at:exec_immediate('insert into test_sql_null(c) values (1)')
+		local tr = at:start_transaction('read')
+		local st = tr:prepare('select c from test_sql_null where ? is null or c = ?')
+		for i, c in st:exec(2,2) do assert(false) end
+		assert(st:setparams(1,1):run():fetch())
+		assert(st:setparams():run():fetch())
+		tr:commit()
+		ok=ok+1
+	end
+
 	at:close()
 	at = nil
 	collectgarbage('collect')
@@ -167,6 +185,6 @@ function test_everything(env)
 	return ok,fail
 end
 
---local comb = {lib='fbclient',ver='2.5rc3',server_ver='2.1.3'}
+--local comb = {{lib='fbembed',ver='2.1.3'}}
 config.run(test_everything,comb,nil,...)
 

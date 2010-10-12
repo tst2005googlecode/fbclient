@@ -1,13 +1,13 @@
 --[[
 	Test unit for wrapper.lua
 
-	TODO: many more test cases are needed:
-	- test assertions and error conditions
-	- test seek() if firebird ppl will ever fix it
-
 ]]
 
 local config = require 'test_config'
+
+local function asserteq(a,b,s)
+	assert(a==b,s or string.format('%s ~= %s', tostring(a), tostring(b)))
+end
 
 function test_everything(env)
 
@@ -29,6 +29,8 @@ function test_everything(env)
 	local api = fbclient.wrapper
 	local dump = fbclient.util.dump
 	local asserts = fbclient.util.asserts
+	local post20 = not env.server_ver:find'^2%.0'
+	local post21 = post20 and not env.server_ver:find'^2%.1'
 
 	local db_opts = {
 		isc_dpb_user_name = env.username,
@@ -91,8 +93,11 @@ function test_everything(env)
 		end
 
 		local function test_tpb()
-			commit('create table test_tr1(id integer)')
-			commit('create table test_tr2(id integer)')
+			local trh = api.tr_start(fbapi, sv, dbh)
+			api.dsql_execute_immediate(fbapi, sv, dbh, trh, 'create table test_tr1(id integer)')
+			api.dsql_execute_immediate(fbapi, sv, dbh, trh, 'create table test_tr2(id integer)')
+			api.tr_commit(fbapi, sv, trh)
+
 			local tpb = {
 				isc_tpb_write=true,
 				isc_tpb_read_committed=true,
@@ -116,6 +121,7 @@ function test_everything(env)
 		local function test_db_info()
 			local tr1 = api.tr_start(fbapi, sv, dbh)
 			local tr2 = api.tr_start(fbapi, sv, dbh)
+
 			local t = {
 				isc_info_db_id=true,
 				isc_info_reads=true,
@@ -168,14 +174,19 @@ function test_everything(env)
 				isc_info_next_transaction=true,
 				isc_info_db_provider=true,
 				isc_info_active_transactions=true,
-				isc_info_active_tran_count=true,
-				isc_info_creation_date=true,
+				isc_info_active_tran_count=post20 or nil,
+				isc_info_creation_date=post20 or nil,
 				isc_info_db_file_size=true,
-				fb_info_page_contents = 1,
+				fb_info_page_contents = post21 and 1 or nil,
 			}
 			local info = api.db_info(fbapi, sv, dbh, t)
 			print'DB info:'; dump(info)
-			asserteq(#info.fb_info_page_contents,info.isc_info_page_size)
+			if post21 then
+				asserteq(#info.fb_info_page_contents, info.isc_info_page_size)
+			end
+			if post20 then
+				asserteq(info.isc_info_active_tran_count, 2)
+			end
 			--TODO: how to assert that all this info is accurate?
 			api.tr_commit(fbapi, sv, tr1)
 			api.tr_commit(fbapi, sv, tr2)
@@ -191,19 +202,21 @@ function test_everything(env)
 			})
 			local t = {
 				isc_info_tra_id=true,
-				isc_info_tra_oldest_interesting=true,
-				isc_info_tra_oldest_snapshot=true,
-				isc_info_tra_oldest_active=true,
-				isc_info_tra_isolation=true,
-				isc_info_tra_access=true,
-				isc_info_tra_lock_timeout=true,
+				isc_info_tra_oldest_interesting=post20 or nil,
+				isc_info_tra_oldest_snapshot=post20 or nil,
+				isc_info_tra_oldest_active=post20 or nil,
+				isc_info_tra_isolation=post20 or nil,
+				isc_info_tra_access=post20 or nil,
+				isc_info_tra_lock_timeout=post20 or nil,
 			}
 			local info = api.tr_info(fbapi, sv, trh, t)
 			print'TRANSACTION info:'; dump(info)
-			asserteq(info.isc_info_tra_isolation[1],'isc_info_tra_read_committed')
-			asserteq(info.isc_info_tra_isolation[2],'isc_info_tra_no_rec_version')
-			asserteq(info.isc_info_tra_access,'isc_info_tra_readwrite')
-			asserteq(info.isc_info_tra_lock_timeout,10)
+			if post20 then
+				asserteq(info.isc_info_tra_isolation[1],'isc_info_tra_read_committed')
+				asserteq(info.isc_info_tra_isolation[2],'isc_info_tra_no_rec_version')
+				asserteq(info.isc_info_tra_access,'isc_info_tra_readwrite')
+				asserteq(info.isc_info_tra_lock_timeout,10)
+			end
 			--TODO: how to assert that all this info is accurate?
 			api.tr_commit(fbapi, sv, trh)
 		end
@@ -258,5 +271,6 @@ function test_everything(env)
 
 end
 
-config.run(test_everything,nil,nil,...)
+--local comb = {{lib='fbembed',ver='2.5.0'}}
+config.run(test_everything,comb,nil,...)
 

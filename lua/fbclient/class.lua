@@ -11,6 +11,7 @@
 	create_database_sql(create_database_sql,[fbapi_object | libname],[at_class]) -> attachmenet
 	attachment:clone() -> new attachment on the same fbapi object
 	attachment:close()
+	attachment:close_all()
 	attachment:closed() -> true|false
 	attachment:drop()
 	attachment:cancel_operation(cancel_opt_s='fb_cancel_raise')
@@ -62,7 +63,7 @@
 	transaction:prepare(sql, [st_class]) -> statement
 	statement:close()
 	statement:closed() -> true|false
-	statement:run()
+	statement:run() -> statement (returned for convenience)
 	statement:fetch() -> true|false; true = OK, false = EOF.
 	statement:set_cursor_name(name); can only be called after each statement:run()
 	statement:close_cursor()
@@ -86,12 +87,12 @@
 	transaction:exec_on(attachment,sql,p1,p2,...) -> row_iterator() -> st,v1,v2,...
 	transaction:exec(sql,p1,p2,...) -> row_iterator() -> st,v1,v2,...
 	statement:exec(p1,p2,...) -> row_iterator() -> col_num,v1,v2,...
-	statement:setparams(p1,p2,...) -> statement; statement only returned for convenience of chain-calling
-	statement:getvalues([col_num|col_name,...]) -> vi,vj,...
+	statement:setparams(p1,p2,...) -> statement (returned for convenience)
 	statement:getvalues() -> v1,v2,...,vlast
+	statement:getvalues([col_num|col_name,...]) -> vi,vj,...
 	statement.values[col_num|col_name] -> statement.columns[col_num]:get()
 	statement:values(...) -> statement:getvalues(...)
-	statement:row() -> { col_name = val, col_num = val, ... }
+	statement:row() -> { col_name = val,... }
 
 	*** ERROR HANDLING ***
 	attachment:sqlcode() -> n; deprecated in favor of sqlstate() in fb 2.5+
@@ -108,6 +109,7 @@
 	statement.fbapi -> fbclient binding object (attachment's fbapi)
 	statement.sv -> status_vector object (attachment's sv)
 
+	attachment.attachments -> hash of all active attachments
 	attachment.transactions -> hash of active transactions on this attachment
 	attachment.statements -> hash of active statements on this attachment
 	transaction.attachments -> hash of attachments this transaction spans
@@ -143,7 +145,7 @@ local xsqlda = require 'fbclient.xsqlda' --for preallocating xsqlda buffers
 require 'fbclient.sql_info' --st:run() calls api.dsql_info()
 
 attachment_class = oo.class {
-	attachments = setmetatable({}, {__mode='k'}),
+	attachments = {},
 	prealloc_param_count = 6, --pre-allocate xsqlda on prepare() to avoid a second isc_describe_bind() API call
 	prealloc_column_count = 20, --pre-allocate xsqlda on prepare() to avoid a second isc_describe() API call
 	statement_handle_pool_limit = 0, --in fb 2.5+ statement handles can be recycled, so you can increase/remove this
@@ -241,6 +243,13 @@ function attachment_class:close()
 	self:rollback_all()
 	api.db_detach(self.fbapi, self.sv, self.handle)
 	self.handle = nil
+	self.attachments[self] = nil
+end
+
+function attachment_class:close_all()
+	while next(self.attachments) do
+		next(self.attachments):close()
+	end
 end
 
 function attachment_class:drop()
@@ -248,6 +257,7 @@ function attachment_class:drop()
 	self:rollback_all()
 	api.db_drop(self.fbapi, self.sv, self.handle)
 	self.handle = nil
+	self.attachments[self] = nil
 end
 
 function attachment_class:sqlcode()
@@ -450,9 +460,9 @@ function attachment_class:start_transaction(access, isolation, lock_timeout, tpb
 	tpb_opts.isc_tpb_concurrency = isolation == 'concurrency' or nil
 	tpb_opts.isc_tpb_read_committed = isolation == 'read commited' or isolation == 'read commited, no record version' or nil
 	tpb_opts.isc_tpb_rec_version = isolation == 'read commited' or nil
-	tpb_opts.isc_tpb_wait = lock_timeout > 0 or nil
+	tpb_opts.isc_tpb_wait = lock_timeout and lock_timeout > 0 or nil
 	tpb_opts.isc_tpb_nowait = lock_timeout == 0 or nil
-	tpb_opts.isc_tpb_lock_timeout = lock_timeout > 0 or nil
+	tpb_opts.isc_tpb_lock_timeout = lock_timeout and lock_timeout > 0 and lock_timeout or nil
 	return self:start_transaction_ex(tpb_opts, tr_class)
 end
 
@@ -468,26 +478,32 @@ function attachment_class:rollback_all()
 	end
 end
 
-function transaction_class:commit()
+function transaction_class:close(action)
+	local action = action or 'commit'
 	assert(self.handle, 'transaction closed')
 	self:close_all_statements()
-	api.tr_commit(self.fbapi, self.sv, self.handle)
-	for at in pairs(self.attachments) do
+	if action == 'commit' then
+		api.tr_commit(self.fbapi, self.sv, self.handle)
+	elseif action == 'rollback' then
+		api.tr_rollback(self.fbapi, self.sv, self.handle)
+	else
+		asserts(false, 'arg#1 "commit" or "rollback" expected, got %s', action)
+	end
+	local at = next(self.attachments)
+	while at do
 		at.transactions[self] = nil
+		self.attachments[at] = nil
+		at = next(self.attachments)
 	end
 	self.handle = nil
-	self.attachments = nil
+end
+
+function transaction_class:commit()
+	self:close('commit')
 end
 
 function transaction_class:rollback()
-	assert(self.handle, 'transaction closed')
-	self:close_all_statements()
-	api.tr_rollback(self.fbapi, self.sv, self.handle)
-	for at in pairs(self.attachments) do
-		at.transactions[self] = nil
-	end
-	self.handle = nil
-	self.attachments = nil
+	self:close('rollback')
 end
 
 function transaction_class:commit_retaining()
@@ -603,7 +619,6 @@ function statement_class:close()
 	self.expect_output = nil
 	self.expect_cursor = nil
 	self.already_fetched = nil
-	self.cursor_open = nil
 	self.attachment.statements[self] = nil
 	self.transaction.statements[self] = nil
 	self.handle = nil
@@ -627,7 +642,6 @@ function statement_class:run()
 	assert(self.handle, 'statement closed')
 	self:close_all_blobs()
 	self:close_cursor()
-
 	if self.expect_output and not self.expect_cursor then
 		api.dsql_execute_returning(self.fbapi, self.sv, self.transaction.handle, self.handle, self.params, self.columns)
 		self.already_fetched = true
@@ -635,6 +649,7 @@ function statement_class:run()
 		api.dsql_execute(self.fbapi, self.sv, self.transaction.handle, self.handle, self.params)
 		self.cursor_open = self.expect_cursor
 	end
+	return self
 end
 
 function statement_class:set_cursor_name(name)
@@ -719,7 +734,6 @@ function statement_class:row()
 	for i,col in ipairs(self.columns) do
 		local name = asserts(col.column_alias_name,'column %d does not have an alias name',i)
 		local val = col:get()
-		t[#t+1] = val
 		t[name] = val
 	end
 	return t
