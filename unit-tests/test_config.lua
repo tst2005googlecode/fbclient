@@ -45,13 +45,10 @@ module(...,package.seeall)
 
 lua_cmdline = nil
 package_dir = './..'
-fbclient_versions = {'2.5.0','2.5rc3','2.5rc2','2.5rc1','2.1.3', '2.1.2','2.0.6','2.0.5'}
+fbclient_versions = {'2.5.0','2.1.3','2.1.2','2.0.6','2.0.5'}
 fbembed_versions = fbclient_versions
 servers = {
 	{'localhost/3250','2.5.0'},
-	{'localhost/3253','2.5rc3'},
-	{'localhost/3252','2.5rc2'},
-	{'localhost/3251','2.5rc1'},
 	{'localhost/3213','2.1.3'},
 	{'localhost/3212','2.1.2'},
 	{'localhost/3206','2.0.6'},

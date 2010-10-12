@@ -59,6 +59,8 @@ function test_everything(env)
 	if _G['decNumber'] then
 		decnumbers = {
 			decNumber.tonumber('-999999999.999999999'),
+			decNumber.tonumber('-123456789.123456789'),
+			decNumber.tonumber(-0),
 			decNumber.tonumber(0),
 			decNumber.tonumber('123456789.123456789'),
 			decNumber.tonumber('999999999.999999999')

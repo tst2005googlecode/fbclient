@@ -46,11 +46,10 @@
 	xsqlvar:set(variant)           for all types: generic setter
 	xsqlvar:get() -> variant       for all types: generic getter
 
-	xsqlvar_class.set_handlers -> weak array of handler functions for set()
-	xsqlvar_class.get_handlers -> weak array of handler functions for get()
+	xsqlvar_class.set_handlers -> array of handler functions for set()
+	xsqlvar_class.get_handlers -> array of handler functions for get()
 	xsqlvar_class.add_set_handler(setf)
-	xsqlvar_class.add_get_handler(getf,[category],[name])
-	xsqlvar_class.set_get_top_priority(category,name)
+	xsqlvar_class.add_get_handler(getf)
 
 	The polymorphic get() and set() are implemented and extendable with handler functions.
 	checkout the handlers in this file and in decimal_*.lua and blob.lua for insight into the protocol
@@ -101,10 +100,7 @@ module(...,require 'fbclient.init')
 
 local datetime = require 'fbclient.datetime'
 
-xsqlvar_class = {
-	set_handlers = setmetatable({},{__mode='v'}),
-	get_handlers = setmetatable({},{__mode='v'}),
-}
+xsqlvar_class = {}
 
 xsqlvar_meta = {
 	__index = xsqlvar_class,
@@ -216,7 +212,7 @@ function xsqlvar_class:getnumber()
 	elseif typ == 'SQL_INT64' then --BIGINT
 		asserts(scale == 0, 'decimal type %s scale %d (only integers and scale 0 decimals allowed)', styp, scale)
 		local lo,hi = struct.unpack('Ii', self.sqldata_buf, self.buflen)
-		local n = hi*2^32+lo --overflowing results in +/- INF
+		local n = hi * 2^32 + lo --overflowing results in +/- INF
 		--we consider it an error to be able to read a number out of the range of setnumber()
 		asserts(n >= MIN_LUAINT and n <= MAX_LUAINT, 'number out of range (range is %d to %d)',MIN_LUAINT,MAX_LUAINT)
 		return n
@@ -250,7 +246,7 @@ function xsqlvar_class:setnumber(n)
 			self.sqldata_buf:set(1,n,'int')
 		elseif typ == 'SQL_INT64' then
 			asserts(n >= MIN_LUAINT and n <= MAX_LUAINT, range_error, MIN_LUAINT, MAX_LUAINT)
-			local lo,hi = n%2^32, math.floor(n/2^32)
+			local lo,hi = n % 2^32, math.floor(n / 2^32)
 			self.sqldata_buf:set(1,lo,'uint')
 			self.sqldata_buf:set(1+INT_SIZE,hi,'int')
 		end
@@ -288,7 +284,7 @@ function xsqlvar_class:getparts(t) --t is optional so you can reuse the table in
 		n = self.sqldata_buf:get(1,'int')
 	elseif typ == 'SQL_INT64' then --BIGINT or DECIMAL(10-18,0-18)
 		local lo,hi = struct.unpack('Ii', self.sqldata_buf, self.buflen)
-		n = hi*2^32+lo --overflowing results in +/- INF
+		n = hi * 2^32 + lo --overflowing results in +/- INF
 		--we see it as an error to be able to getparts() a number that is out of the range of setparts()
 		asserts(n >= MIN_LUAINT and n <= MAX_LUAINT, 'number out of range (range is %d to %d)', MIN_LUAINT, MAX_LUAINT)
 	else
@@ -322,7 +318,7 @@ function xsqlvar_class:setparts(t)
 		self.sqldata_buf:set(1,n,'int')
 	elseif typ == 'SQL_INT64' then
 		asserts(n >= MIN_LUAINT and n <= MAX_LUAINT, range_error, 1, MIN_LUAINT, MAX_LUAINT)
-		local lo,hi = n%2^32, math.floor(n/2^32)
+		local lo,hi = n % 2^32, math.floor(n / 2^32)
 		self.sqldata_buf:set(1,lo,'uint')
 		self.sqldata_buf:set(1+INT_SIZE,hi,'int')
 	else
@@ -443,7 +439,7 @@ function xsqlvar_class:set(p)
 			return
 		end
 	end
-	asserts(false, 'set(%s) not implemented for type %s',xtype(p),self:type())
+	asserts(false, 'set(%s) not available for type %s',xtype(p),self:type())
 end
 
 function xsqlvar_class:get()
@@ -453,7 +449,7 @@ function xsqlvar_class:get()
 			return x
 		end
 	end
-	asserts(false, 'get() not implemented for type %s',self:type())
+	asserts(false, 'get() not available for type %s',self:type())
 end
 
 function xsqlvar_class:add_get_handler(f)
@@ -464,21 +460,10 @@ function xsqlvar_class:add_set_handler(f)
 	self.set_handlers[#self.set_handlers+1] = f
 end
 
---the getters and setters need to be module-bound so they don't get get garbage-collected
-getters = {}
-setters = {}
+xsqlvar_class.set_handlers = {}
+xsqlvar_class.get_handlers = {}
 
-local function add_get_handler(f)
-	xsqlvar_class:add_get_handler(f)
-	getters[f] = true
-end
-
-local function add_set_handler(f)
-	xsqlvar_class:add_set_handler(f)
-	setters[f] = true
-end
-
-add_set_handler(
+xsqlvar_class:add_set_handler(
 	function(self,p,typ,opt) --nil -> NULL
 		if p == nil then
 			self:setnull(p)
@@ -487,7 +472,7 @@ add_set_handler(
 	end
 )
 
-add_set_handler(
+xsqlvar_class:add_set_handler(
 	function(self,p,typ,opt) --indexable for time|date|timestamp -> settime()
 		if (typ == 'time' or typ == 'date' or typ == 'timestamp')
 			and applicable(p,'__index')
@@ -498,7 +483,7 @@ add_set_handler(
 	end
 )
 
-add_set_handler(
+xsqlvar_class:add_set_handler(
 	function(self,p,typ,opt) --indexable for all integers -> setparts({int,frac})
 		if (typ == 'int16' or typ == 'int32' or typ == 'int64')
 			and applicable(p,'__index')
@@ -509,7 +494,7 @@ add_set_handler(
 	end
 )
 
-add_set_handler(
+xsqlvar_class:add_set_handler(
 	function(self,p,typ,opt) --number for all integers w/scale=0 -> setnumber()
 		if (typ == 'float' or typ == 'double' or
 				((typ == 'int16' or typ == 'int32' or typ == 'int64') and opt == 0))
@@ -521,7 +506,7 @@ add_set_handler(
 	end
 )
 
-add_set_handler(
+xsqlvar_class:add_set_handler(
 	function(self,p,typ,opt) --string for varchars
 		if typ == 'varchar' and type(p) == 'string' then --no auto-coercion for strings
 			self:setstring(p)
@@ -530,7 +515,7 @@ add_set_handler(
 	end
 )
 
-add_set_handler(
+xsqlvar_class:add_set_handler(
 	function(self,p,typ,opt) --string for chars
 		if typ == 'char' and type(p) == 'string' then --no auto-coercion for strings
 			self:setpadded(p)
@@ -539,7 +524,7 @@ add_set_handler(
 	end
 )
 
-add_set_handler(
+xsqlvar_class:add_set_handler(
 	function(self,p,typ,opt) --non-nil for SQL_NULL
 		if typ == 'is_null' then
 			if p == nil then
@@ -552,7 +537,7 @@ add_set_handler(
 	end
 )
 
-add_get_handler(
+xsqlvar_class:add_get_handler(
 	function(self,typ,opt)
 		if self:isnull() then
 			return true,nil
@@ -560,7 +545,7 @@ add_get_handler(
 	end
 )
 
-add_get_handler(
+xsqlvar_class:add_get_handler(
 	function(self,typ,opt)
 		if typ == 'time' or typ == 'date' or typ == 'timestamp' then
 			return true,self:gettime()
@@ -568,7 +553,7 @@ add_get_handler(
 	end
 )
 
-add_get_handler(
+xsqlvar_class:add_get_handler(
 	function(self,typ,opt)
 		if typ == 'float' or typ == 'double' or
 			((typ == 'int16' or typ == 'int32' or typ == 'int64') and opt == 0) then
@@ -577,7 +562,7 @@ add_get_handler(
 	end
 )
 
-add_get_handler(
+xsqlvar_class:add_get_handler(
 	function(self,typ,opt)
 		if (typ == 'int16' or typ == 'int32' or typ == 'int64') and opt ~= 0 then
 			return true,self:getparts()
@@ -585,7 +570,7 @@ add_get_handler(
 	end
 )
 
-add_get_handler(
+xsqlvar_class:add_get_handler(
 	function(self,typ,opt)
 		if typ == 'varchar' then
 			return true,self:getstring()
@@ -593,7 +578,7 @@ add_get_handler(
 	end
 )
 
-add_get_handler(
+xsqlvar_class:add_get_handler(
 	function(self,typ,opt)
 		if typ == 'char' then
 			return true,self:getunpadded()
@@ -601,7 +586,7 @@ add_get_handler(
 	end
 )
 
-add_get_handler(
+xsqlvar_class:add_get_handler(
 	function(self,typ,opt)
 		if typ == 'is_null' then
 			return true,not self:isnull() or nil

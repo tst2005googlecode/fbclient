@@ -7,13 +7,9 @@
 	- trace API (decode trace)
 	- events API (add alien extension for async callbacks)
 
-- finish test_blob.lua and retest everything
+- dld/setup linux binaries and test everything on linux
 
 - implement something like local x,i = st:first_row('select ...')
-- solve xsqlvar bignum getter priority !
-
-- get bc.dll, mapm.dll and decnumber.dll again
-- dld/setup linux binaries and test everything on linux
 
 - finish schema.lua
 	- test load everything
@@ -23,6 +19,4 @@
 	- add schema:export_differences([old_schema],[params...]) -> sql statement list with param values
 
 - finish bignum.lua and add decimal_bignum.lua
-
-
 

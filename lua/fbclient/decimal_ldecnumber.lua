@@ -3,6 +3,8 @@
 
 	df(lo,hi,scale) -> d; to be used with getdecimal()
 	sdf(d,scale)	-> lo,hi; to be used with setdecimal()
+
+	decnumber_meta	-> ldecNumber.number_metatable
 	isdecnumber(x)	-> true|false; the decnumber library should provide this but since it doesn't...
 
 	xsqlvar:getdecnumber() -> d
@@ -22,6 +24,8 @@ module(...,require 'fbclient.init')
 
 local decNumber = require 'ldecNumber'
 local xsqlvar_class = require('fbclient.xsqlvar').xsqlvar_class
+
+decnumber_meta = decNumber.number_metatable
 
 -- convert the lo,hi dword pairs of a 64bit integer into a decimal number and scale it down.
 function df(lo,hi,scale)
@@ -46,23 +50,22 @@ function xsqlvar_class:setdecnumber(d)
 end
 
 function isdecnumber(p)
-	return getmetatable(p) == decNumber.number_metatable
+	return getmetatable(p) == decnumber_meta
 end
 
---the setter and getter must be module-bound so they won't get garbage-collected
-function setter(self,p,typ,opt)
-	if isdecnumber(p) and (typ == 'int16' or typ == 'int32' or typ == 'int64') then
-		self:setdecnumber(p)
-		return true
+xsqlvar_class:add_set_handler(
+	function(self,p,typ,opt)
+		if isdecnumber(p) and (typ == 'int16' or typ == 'int32' or typ == 'int64') then
+			self:setdecnumber(p)
+			return true
+		end
 	end
-end
+)
 
-function getter(self,typ,opt)
-	if typ == 'int16' or typ == 'int32' or typ == 'int64' then
-		return true,self:getdecnumber()
+xsqlvar_class:add_get_handler(
+	function(self,typ,opt)
+		if typ == 'int16' or typ == 'int32' or typ == 'int64' then
+			return true,self:getdecnumber()
+		end
 	end
-end
-
-xsqlvar_class:add_set_handler(setter)
-xsqlvar_class:add_get_handler(getter)
-
+)

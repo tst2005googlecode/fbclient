@@ -146,7 +146,7 @@ local function test_everything(env)
 		asserteq(count(tr.statements), 0)
 
 		local q = 'insert into t values (?,?)'
-		tr:exec(q, 2, 'hello again')
+		for st in tr:exec(q, 2, 'hello again') do assert(false,'shouldn\'t fetch') end
 		print('exec/insert', q, 2, 'hello again')
 		asserteq(count(tr.statements), 0)
 

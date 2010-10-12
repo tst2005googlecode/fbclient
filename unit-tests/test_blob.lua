@@ -8,10 +8,15 @@
 
 local config = require 'test_config'
 
+local function asserteq(a,b,s)
+	assert(a==b,s or string.format('%s ~= %s', tostring(a), tostring(b)))
+end
+
 function test_everything(env)
 
-	local api = require 'fbclient.wrapper'
 	local asserts = (require 'fbclient.util').asserts
+	local dump = (require 'fbclient.util').dump
+	local blobapi = require 'fbclient.blob' --not loaded automatically
 
 	local at
 
@@ -23,108 +28,104 @@ function test_everything(env)
 		return table.concat(t)
 	end
 
+	local min = assert(blobapi.MIN_SEGMENT_SIZE)
+	local max = assert(blobapi.MAX_SEGMENT_SIZE)
 	local function test_segmented_blobs()
-		local blob_segments = {
-			gen_s(2^16-1),
-			gen_s(0),
-			gen_s(1),
+		local segments = {
+			gen_s(max),
+			gen_s(min),
+			gen_s(min+1),
 			gen_s(255),
-			gen_s(3*(2^16-1)),
+			gen_s(3*max+1), --this should occupy 3 more segments
 		}
-
-		local s = table.concat(blob_segments)
 
 		at:exec_immediate('create table test(c blob sub_type binary)')
 		local st = at:start_transaction():prepare('insert into test(c) values (?)')
-		st:setparams(blob_segments):run()
+		st:setparams(segments):run()
 		assert(st.params[1]:closed())
-
 		at:commit_all()
 
 		local st = at:start_transaction():prepare('select c from test')
 		assert(st:run():fetch())
-		local segs = st.columns[1]:segments()
-		assert(st.columns[1]:closed())
-		for i,seg in ipairs(blob_segments) do
-			assert(seg == segs[i])
-		end
+		local xs = st.columns[1]
 
-		--[[
-		local binfo = fbclient.blob.info(fbapi,sv,bh,{
+		xs:open()
+		local binfo = xs:blobinfo{
 			isc_info_blob_total_length=true,
 			isc_info_blob_max_segment=true,
 			isc_info_blob_num_segments=true,
 			isc_info_blob_type=true,
-		})
+		}
 		print'BLOB info:'; dump(binfo)
-		asserteq(binfo['isc_info_blob_total_length'],#s)
-		asserteq(binfo['isc_info_blob_max_segment'],2048)
-		asserteq(binfo['isc_info_blob_num_segments'],130)
+		asserteq(binfo['isc_info_blob_total_length'],#table.concat(segments))
+		asserteq(binfo['isc_info_blob_max_segment'],max)
+		asserteq(binfo['isc_info_blob_num_segments'],#segments+3)
 		asserteq(binfo['isc_info_blob_type'],'isc_bpb_type_segmented')
-		]]
+
+		local segs = {}
+		for seg in xs:segments() do
+			segs[#segs+1]=seg
+		end
+		assert(xs:closed())
+		asserteq(#segs, #segments+3)
+		for i=1,#segments-1 do
+			asserteq(segs[i], segments[i])
+		end
+		for i=0,3 do
+			asserteq(segs[#segments+i], segments[#segments]:sub(i*max+1,(i+1)*max))
+		end
+		asserteq(table.concat(segs), table.concat(segments))
+		asserteq(st.values[1], table.concat(segments))
+
+		at:commit_all()
 	end
 
 	local function test_stream_blobs()
 		local s = '1234567890abcdefghijklmnopqrstuvwxyz'
-		local max_seg = 1
+		local max_seg = 13
 
-		commit('create table t_stream_blob(f blob sub_type binary)')
-		local trh = api.tr_start(fbapi, sv, dbh)
-		local bpb = {
-			isc_bpb_type = 'isc_bpb_type_stream',
-			isc_bpb_storage = 'isc_bpb_storage_main',
-		}
-		local bh,bid = fbclient.blob.create(fbapi,sv,dbh,trh,bpb)
-		fbclient.blob.write(fbapi,sv,bh,s,max_seg) --write in max_seg byte segments: prove later it don't matter.
-		fbclient.blob.close(fbapi,sv,bh)
+		at:exec_immediate('create table test_sb(c blob sub_type binary)')
+		local st = at:start_transaction():prepare('insert into test_sb(c) values (?)')
+		local xs = st.params[1]
+		xs:create('stream')
+		xs:write(s,max_seg)
+		st:run()
+		assert(xs:closed())
+		at:commit_all()
 
-		bh = fbclient.blob.open(fbapi,sv,dbh,trh,bid)
-
-		local binfo = fbclient.blob.info(fbapi,sv,bh,{
+		local st = at:start_transaction():prepare('select c from test_sb')
+		assert(st:run():fetch())
+		local xs = st.columns[1]
+		xs:open()
+		local binfo = xs:blobinfo{
 			isc_info_blob_total_length=true,
 			isc_info_blob_max_segment=true,
 			isc_info_blob_num_segments=true,
 			isc_info_blob_type=true,
-		})
+		}
 		print'BLOB info:'; dump(binfo)
-		asserteq(binfo['isc_info_blob_num_segments'],math.ceil(#s/max_seg))
-		asserteq(binfo['isc_info_blob_total_length'],#s)
-		asserteq(binfo['isc_info_blob_max_segment'],math.min(max_seg,#s))
-		asserteq(binfo['isc_info_blob_type'],'isc_bpb_type_stream')
+		local num_segs = math.floor(#s / max_seg) + (#s % max_seg > 0 and 1 or 0)
+		asserteq(binfo['isc_info_blob_total_length'], #s)
+		asserteq(binfo['isc_info_blob_max_segment'], max_seg)
+		asserteq(binfo['isc_info_blob_num_segments'], num_segs)
+		asserteq(binfo['isc_info_blob_type'], 'isc_bpb_type_stream')
+
+		local segs = {}
+		for seg in xs:segments(max_seg*2) do
+			segs[#segs+1]=seg
+		end
+		assert(xs:closed())
+		asserteq(#segs, math.floor(#s / (max_seg*2)) + (#s % (max_seg*2) > 0 and 1 or 0))
+		asserteq(table.concat(segs), s)
+		asserteq(st.values[1], s)
 
 		--TODO: test seek() if it will ever work
-		--[[
-		asserteq(fbclient.blob.seek(fbapi,sv,bh,-37,'blb_seek_from_tail'),1)
-		asserteq(fbclient.blob.seek(fbapi,sv,bh,0,'blb_seek_relative'),1)
-		asserteq(fbclient.blob.read_segment(fbapi,sv,bh,10),'1234567890') --prove that segmentation don't matter!
-		asserteq(fbclient.blob.seek(fbapi,sv,bh,11),11)
-		asserteq(fbclient.blob.read_segment(fbapi,sv,bh,2),'ab')
-		asserteq(fbclient.blob.seek(fbapi,sv,bh,3,'blb_seek_relative'),13)
-		asserteq(fbclient.blob.read_segment(fbapi,sv,bh,3),'efg')
-		asserteq(fbclient.blob.seek(fbapi,sv,bh,-26,'blb_seek_from_tail'),10)
-		asserteq(fbclient.blob.seek(fbapi,sv,bh,-3,'blb_seek_from_tail'),33)
-		asserteq(fbclient.blob.read_segment(fbapi,sv,bh,3),'xyz')
-		print((fbclient.blob.read_segment(fbapi,sv,bh)))
-		print((fbclient.blob.read_segment(fbapi,sv,bh)))
-
-		asserteq(fbclient.blob.seek(fbapi,sv,bh,1),1)
-		]]
-
-		local segments = {}
-		for seg in fbclient.blob.segments(fbapi,sv,bh,1024) do --read in 1024 byte chunks
-			segments[#segments+1] = seg
-		end
-		fbclient.blob.close(fbapi,sv,bh)
-		api.tr_commit(fbapi, sv, trh)
-		asserteq(#segments,1) -- prove that a stream doesn't have segments should the buffer be long enough
-		asserteq(table.concat(segments),s)
-
 	end
 
 	at = env:create_test_db()
 
 	test_segmented_blobs()
-	--test_stream_blobs()
+	test_stream_blobs()
 
 	at:close()
 
@@ -133,5 +134,4 @@ end
 
 --local comb = {{lib='fbembed',ver='2.1.3'}}
 config.run(test_everything,comb,nil,...)
-
 

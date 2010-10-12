@@ -51,6 +51,8 @@
 	xsqlvar:maxsegmentcount() -> n
 	xsqlvar:blobtype() -> 'stream'|'segmented'
 
+	MAX_SEGMENT_SIZE = util.MAX_USHORT
+
 	TODO:
 	- blob filters. ask me to implement them.
 
@@ -68,12 +70,13 @@ local xsqlvar_class = require('fbclient.xsqlvar').xsqlvar_class
 local fbtry = svapi.try
 local blobapi = _M
 
-local MAX_SEGMENT_SIZE = MAX_USHORT-1
-
 local ISC_QUAD = 'c8'
 local ISC_QUAD_SIZE = struct.size(ISC_QUAD)
 local isc_segment = 335544366 --isc_get_segment error code: more
 local isc_segstr_eof = 335544367 --isc_get_segment error code: eof
+
+MIN_SEGMENT_SIZE = 1 --writing a 0-byte segment is supported but reading it back is not!
+MAX_SEGMENT_SIZE = MAX_USHORT
 
 function open(fbapi, sv, dbh, trh, blob_id_buf, opts)
 	local bpb_str = bpb.encode(opts)
@@ -114,6 +117,7 @@ function read_segment(fbapi, sv, bh, data_buf_size, data_buf, len_buf)
 		assert(data_buf_size, 'missing data_buf_size for data_buf')
 	end
 	data_buf_size = data_buf_size or MAX_SEGMENT_SIZE
+	asserts(data_buf_size >= MIN_SEGMENT_SIZE, 'buffer too small. min. allowed is %d bytes', MIN_SEGMENT_SIZE)
 	asserts(data_buf_size <= MAX_SEGMENT_SIZE, 'buffer too large. max. allowed is %d bytes', MAX_SEGMENT_SIZE)
 	data_buf = data_buf or alien.buffer(data_buf_size)
 	len_buf = len_buf or alien.buffer(SHORT_SIZE)
@@ -122,13 +126,14 @@ function read_segment(fbapi, sv, bh, data_buf_size, data_buf, len_buf)
 	local ok, errcode = svapi.status(sv)
 	if ok or errcode == isc_segment or errcode == isc_segstr_eof then
 		local len = len_buf:get(1,'ushort')
-		return len > 0 and data_buf:tostring(len) or nil, data_buf, len_buf, data_buf_size
+		return len >= MIN_SEGMENT_SIZE and data_buf:tostring(len) or nil, data_buf, len_buf, data_buf_size
 	end
 	assert(svapi.full_status(sv))
 	assert(false)
 end
 
 function write_segment(fbapi, sv, bh, s)
+	asserts(#s >= MIN_SEGMENT_SIZE, 'segment too small. min. allowed is %d bytes', MIN_SEGMENT_SIZE)
 	asserts(#s <= MAX_SEGMENT_SIZE, 'segment too large. max. allowed is %d bytes', MAX_SEGMENT_SIZE)
 	fbtry(fbapi, sv, 'isc_put_segment', bh, #s, s)
 end
@@ -171,13 +176,18 @@ end
 --unlike write_segment(), write() writes any string, automatically segmenting it into segment_size-long segments.
 function write(fbapi, sv, bh, s, segment_size)
 	segment_size = segment_size or math.min(MAX_SEGMENT_SIZE, #s)
-	local full_seg_num = math.floor(#s/segment_size)
-	local last_seg_size = #s % segment_size
-	for i=1,full_seg_num do
-		write_segment(fbapi, sv, bh, s:sub(1+(i-1)*segment_size,i*segment_size))
-	end
-	if last_seg_size > 0 then
-		write_segment(fbapi, sv, bh, s:sub(1+full_seg_num*segment_size))
+	if segment_size > 0 then
+		local full_seg_num = math.floor(#s / segment_size)
+		local last_seg_size = #s % segment_size
+		for i=1,full_seg_num do
+			write_segment(fbapi, sv, bh, s:sub(1 + (i-1) * segment_size, i * segment_size))
+		end
+		if last_seg_size > 0 then
+			write_segment(fbapi, sv, bh, s:sub(1 + full_seg_num * segment_size))
+		end
+	else
+		assert(#s == 0, 'attempt to write a non-empty string with a segment_size of 0')
+		write_segment(fbapi, sv, bh, '')
 	end
 end
 
@@ -293,37 +303,39 @@ function xsqlvar_class:blobtype()
 end
 
 --the setters and getter must be module-bound so they won't get garbage-collected
-function string_setter(self,s,typ,opt)
-	if typ == 'blob' and type(s) == 'string' then --string for blob -> write a stream blob
-		self:create('stream')
-		self:write(s)
-		self:close()
-		return true
-	end
-end
-
-function iterable_setter(self,t,typ,opt)
-	if typ == 'blob' and applicable(t,'__ipairs') then --iterable for blob -> write a segmented blob
-		for i,s in ipairs(t) do
-			self:create('segmented')
+xsqlvar_class:add_set_handler(
+	function(self,s,typ,opt)
+		if typ == 'blob' and type(s) == 'string' then --string for blob -> write a stream blob
+			self:create('stream')
 			self:write(s)
 			self:close()
 			return true
 		end
 	end
-end
+)
 
-function getter(self,typ,opt)
-	if typ == 'blob' then
-		local t = {}
-		for s in self:segments() do
-			t[#t+1] = s
+xsqlvar_class:add_set_handler(
+	function(self,t,typ,opt)
+		if typ == 'blob' and applicable(t,'__ipairs') then --iterable for blob -> write a segmented blob
+			self:create('segmented')
+			for i,s in ipairs(t) do
+				self:write(s)
+			end
+			self:close()
+			return true
 		end
-		return true,table.concat(t)
 	end
-end
+)
 
-xsqlvar_class:add_set_handler(string_setter)
-xsqlvar_class:add_set_handler(iterable_setter)
-xsqlvar_class:add_get_handler(getter)
+xsqlvar_class:add_get_handler(
+	function(self,typ,opt)
+		if typ == 'blob' then
+			local t = {}
+			for s in self:segments() do
+				t[#t+1] = s
+			end
+			return true,table.concat(t)
+		end
+	end
+)
 

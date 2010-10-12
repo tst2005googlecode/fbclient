@@ -18,10 +18,10 @@ local function add(ok_num,fail_num)
 end
 
 --add(config.run('test_binding.lua')) --pass
---add(config.run('test_wrapper.lua')) --fail!!!
+add(config.run('test_wrapper.lua')) --fail!!!
 --add(config.run('test_class.lua')) --pass
 --add(config.run('test_xsqlvar.lua')) --pass
-add(config.run('test_blob.lua'))
+--add(config.run('test_blob.lua')) --pass
 --add(config.run('test_service_wrapper.lua')) --pass
 --add(config.run('test_service_class.lua')) --pass
 
