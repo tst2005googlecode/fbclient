@@ -78,7 +78,7 @@ function test_everything(env)
 		local function test_info()
 			print('**** test_info ****')
 			dump(api.query(fbapi,sv,svh,{
-				isc_info_svc_svr_db_info		= true, --ok
+				isc_info_svc_svr_db_info		= (not env.server_ver:find'^2%.1' and not env.server_ver:find'^2%.0') or nil, --ok
 				--isc_info_svc_get_license		= true, --not supported on firebird
 				--isc_info_svc_get_license_mask	= true, --not supported on firebird
 				isc_info_svc_get_config			= true, --nothing on firebird (marked TODO in jrd/svc.cpp)
@@ -196,6 +196,7 @@ function test_everything(env)
 				api.start(fbapi,sv,svh,'isc_action_svc_delete_user',{isc_spb_sec_username='test_user'})
 			end)
 			pcall(function() wait() end)
+			pcall(function() query_action() end)
 
 			print('**** test_user_actions/add_user ****')
 			api.start(fbapi,sv,svh,'isc_action_svc_add_user',{

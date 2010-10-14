@@ -245,7 +245,6 @@ function dsql_prepare(fbapi, sv, dbh, trh, sth, sql, dialect, in_xsqlda, out_xsq
 		out_xsqlda = xsqlda.new(used)
 		fbtry(fbapi, sv, 'isc_dsql_describe', sth, 1, out_xsqlda)
 	end
-	print(sql,alloc,used)
 
 	--allocate sqldata buffers for each output column, according to the xsqlvar description.
 	local out_t = {}

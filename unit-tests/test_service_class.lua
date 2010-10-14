@@ -142,8 +142,10 @@ function test_everything(env)
 
 		pcall(function()
 			svc:user_delete('test_user')
-			while svc:busy() do end
 		end)
+		pcall(function() while svc:busy() do end end)
+		pcall(dump_lines)
+		
 		print('user_add()'); svc:user_add('test_user','123','Test','W','Foo')
 		while svc:busy() do end
 		print('user_update()'); svc:user_update('test_user','321','Test2','W2','Foo2')

@@ -175,14 +175,8 @@ function init(verbose)
 			assert(kernel32.SetDllDirectoryA(nil) ~= 0, what..'SetDllDirectoryA() error')
 			assert(kernel32.SetDllDirectoryA(path) ~= 0, what..'SetDllDirectoryA() error')
 
-			--fbembed < 2.5 can't find its root dir by itself
-			if libname == 'fbembed' and (version:find'^2%.0' or version:find'^2%.1') then
-				os.setenv('FIREBIRD',path)
-				assert(os.getenv('FIREBIRD')==path)
-			else
-				os.setenv('FIREBIRD',nil)
-				assert(os.getenv('FIREBIRD')==nil)
-			end
+			os.setenv('FIREBIRD',path)
+			assert(os.getenv('FIREBIRD')==path)
 
 			return path..'\\'..libname..'.dll'
 		end
@@ -193,10 +187,8 @@ function init(verbose)
 			local libpath = path..'/lib'
 			local libfilepath = libpath..'/lib'..libname..'.so.'..version
 
-			if libname == 'fbembed' then
-				os.setenv('FIREBIRD',path)
-				assert(os.getenv('FIREBIRD')==path)
-			end
+			os.setenv('FIREBIRD',path)
+			assert(os.getenv('FIREBIRD')==path)
 
 			return libfilepath
 		end

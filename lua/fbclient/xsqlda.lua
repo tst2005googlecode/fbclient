@@ -80,7 +80,6 @@ end
 --call this after isc_dsql_prepare() or isc_dsql_describe*() to find out how many actual
 --columns/parameters are needed. if used_count < alloc_count, you'll need to reallocate the xsqlda.
 function decode(xsqlda_buf)
-	dump_buffer(xsqlda_buf,struct.size(XSQLDA)+8)
 	local
 		version,			--1
 		sqlda_name,			--reserved

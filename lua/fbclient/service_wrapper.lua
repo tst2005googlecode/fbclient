@@ -1007,7 +1007,6 @@ function query(fbapi, sv, svh, request_opts, sbp_opts, buf, buf_size)
 		buf = alien.buffer(buf_size)
 	end
 	fbtry(fbapi, sv, 'isc_service_query', svh, nil, spb_s and #spb_s or 0, spb_s, #req_s, req_s, buf_size, buf)
-	--dump(buf,buf_size)
 	info = info_buf_decode(buf, buf_size)
 	return info, buf, buf_size --return buf,bufsize for eventual reuse of the buffer with another query()
 end
