@@ -34,8 +34,13 @@
 
 	Limitations:
 
-	Uses current directory to form a full path for finding the firebird binaries.
-	Which means you have to run the test suite from this directory.
+	- uses current directory to form a full path for finding the firebird binaries,
+	which means you have to run the test suite from the directory of this file.
+
+	- run() is designed to either run a lua script in a sub-process or alua function in the same process
+	for each test combination; currently though, only running a lua script is supported because:
+		1) a bug in alien 0.5 which prevents having lib1.func1 and lib2.func1 in the same process space;
+		2) a limitation of ldd.so which doesn't re-read LD_LIBRARY_PATH on every dlopen() call.
 
 ]]
 
@@ -45,18 +50,14 @@ module(...,package.seeall)
 
 lua_cmdline = nil
 package_dir = './..'
-fbclient_versions = {'2.5.0','2.1.3','2.1.2','2.0.6','2.0.5'}
+fbclient_versions = {'2.5.0','2.1.3','2.0.6'}
 fbembed_versions = fbclient_versions
 servers = {
 	{'localhost/3250','2.5.0'},
 	{'localhost/3213','2.1.3'},
-	{'localhost/3212','2.1.2'},
 	{'localhost/3206','2.0.6'},
-	{'localhost/3205','2.0.5'},
 }
-excluded_combinations = {
-	{lib='fbclient',server_ver='2.0.5'}, --can't install multiple fbserver 2.0.x instances (that feature comes with fb 2.1+)
-}
+excluded_combinations = {}
 dependencies = {'mapm', 'ldecNumber', 'bc'}
 
 --end config section
@@ -76,17 +77,50 @@ setup_lib = nil
 local original_package_cpath = package.cpath
 local original_package_path = package.path
 
+local function read(cmd)
+	local f = io.popen(cmd)
+	local s = f:read('*a')
+	f:close()
+	if string.sub(s,-1)=='\n' then
+		s = string.sub(s,1,-2) --remove terminating newline
+	end
+	return s
+end
+
 function init(verbose)
 	local _print=print; local function print(...) if verbose ~= false then _print(...) end end
 
 	if OS then return end
 
-	--setup require() to load dependent libraries from ./lua/modules? and ./<OS>/lua/modules/? respectively
-	package.path = [[lua\modules\?.lua;]]..original_package_path
-	package.cpath = [[.\win32\lua\modules\?.dll;linux32/lua/modules/?.so;]]..original_package_cpath
+	--setup require() to load binary libraries from ./win32/lua/modules first
+	package.cpath = [[.\win32\lua\modules\?.dll;]]..original_package_cpath
+	require 'alien.core'
+
+	--detect OS
+	local function DetectOS() --stolen from Asko Kauppi's hamster
+		local plat = alien.core.platform
+		if plat == 'windows' then
+			return 'win32'
+		elseif plat == 'linux' then
+			local s = read('uname -m')
+			if s:find'^x86_64' then
+				return 'linux64'
+			else
+				return 'linux32'
+			end
+		else
+			error('Unsupported platform '..plat)
+		end
+	end
+	OS = DetectOS()
+	print('Detected OS: '..OS)
+
+	if OS == 'win32' then
+		--on windows we setup require() to load dependent lua modules from .\lua\modules
+		package.path = [[lua\modules\?.lua;]]..original_package_path
+	end
 
 	require 'alien'
-	require 'alien.core'
 	require 'alien.struct'
 	require 'ex' --for os.setenv()
 
@@ -99,24 +133,10 @@ function init(verbose)
 	end
 	package.path = package.path..';'..package_dir..'/lua/?.lua'
 
-	--detect OS
-	local function DetectOS() --stolen from Asko Kauppi's hamster
-		local plat = alien.core.platform
-		if plat == 'windows' then
-			return 'win32'
-		elseif plat == 'linux' then
-			return 'linux32'
-		else
-			error('Unsupported platform '..plat)
-		end
-	end
-	OS = DetectOS()
-	print('Detected OS: '..OS)
-
 	--detect temp dir
 	if OS == 'win32' then
 		tmpdir = assert(os.getenv('TEMP'), 'Cannot set up a working directory: env. var %TEMP% is not set.')..'\\'
-	elseif OS == 'linux32' then
+	elseif OS:find'^linux' then
 		tmpdir = '/tmp/'
 	end
 	print('Detected temp dir: '..tmpdir)
@@ -124,7 +144,7 @@ function init(verbose)
 	--setup lua command line for executing test scripts
 	if OS == 'win32' then
 		lua_cmdline = [[.\win32\lua\lua.exe -e "io.stdout:setvbuf 'no'"]]
-	elseif OS == 'linux32' then
+	elseif OS:find'^linux' then
 		lua_cmdline = [[lua -e "io.stdout:setvbuf 'no'"]]
 	end
 	print('Using lua command: '..lua_cmdline)
@@ -147,14 +167,11 @@ function init(verbose)
 		end
 
 		--get current directory: SetDllDirectoryA needs an absolute path
-		local cd = io.popen('cd'):read('*a')
+		local cd = read('cd')
 		cd = assert(cd,'Cannot detect current directory: `cd` command failed')
-		if string.sub(cd,-1)=='\n' then
-			cd = string.sub(cd,1,-2) --remove terminating newline
-		end
 
 		function setup_lib(libname, version)
-			path = cd..'\\win32\\'..(libname == 'fbembed' and 'fbembed-'..version or 'firebird-'..version..'\\bin')
+			path = cd..'\\win32\\'..(libname == 'fbembed' and 'fbembed' or 'firebird')..'-'..version..'\\bin'
 			assert(kernel32.SetDllDirectoryA(nil) ~= 0, what..'SetDllDirectoryA() error')
 			assert(kernel32.SetDllDirectoryA(path) ~= 0, what..'SetDllDirectoryA() error')
 
@@ -169,10 +186,19 @@ function init(verbose)
 
 			return path..'\\'..libname..'.dll'
 		end
-
 	else
 		function setup_lib(libname, version)
-			return 'linux32/'..libname..'-'..version..'/'..libname..'.so.'..version
+			local pwd = '.'
+			local path = pwd..'/'..OS..'/'..'firebird'..'-'..version
+			local libpath = path..'/lib'
+			local libfilepath = libpath..'/lib'..libname..'.so.'..version
+
+			if libname == 'fbembed' then
+				os.setenv('FIREBIRD',path)
+				assert(os.getenv('FIREBIRD')==path)
+			end
+
+			return libfilepath
 		end
 	end
 
@@ -228,6 +254,19 @@ function combinations(included_comb,excluded_comb)
 		end
 	end
 	return t
+end
+
+function setup_subprocess(comb)
+	if OS:find'^linux' then
+		local pwd = '.'
+		local path = pwd..'/'..OS..'/'..'firebird'..'-'..comb.ver
+		local libpath = path..'/lib'
+		--this has no effect for loading a library in the current process, for which ldd.so
+		--already read LD_LIBRARY_PATH and won't read it again on the next call to dlopen().
+		--so we have to set LD_LIBRARY_PATH in the parent process and it gets inherited.
+		os.setenv('LD_LIBRARY_PATH',libpath)
+		assert(os.getenv('LD_LIBRARY_PATH')==libpath)
+	end
 end
 
 test_env_class = {}
@@ -339,6 +378,7 @@ function unwrap(script,comb)
 		if s:find('^@@@ COUNTS') then
 			ok_num,fail_num = s:match('^@@@ COUNTS%s(%-?%d+)%s(%-?%d+)')
 		elseif s:find('^@@@ ERROR') then
+			f:close()
 			error(s:match('^@@@ ERROR%s(.*)'))
 		else
 			print(s)
@@ -351,6 +391,7 @@ end
 local function _run(f,comb)
 	local ok_num,fail_num
 	if type(f) == 'string' then --we have to run a lua test script
+		setup_subprocess(comb)
 		ok_num,fail_num = unwrap(f,comb)
 	else -- we have to run a lua test function
 		local env = setup(comb)

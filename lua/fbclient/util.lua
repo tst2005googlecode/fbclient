@@ -167,6 +167,16 @@ function isushort(v) return v%1 == 0 and v >= 0 and v <= MAX_USHORT end
 function isbyte(v) return v%1 == 0 and v >= 0 and v <= MAX_BYTE end
 function isschar(v) return v%1 == 0 and v >= MIN_SCHAR and v <= MAX_SCHAR end
 
+function dump_buffer(buf,size)
+	local s = buf:tostring(size)
+	print('alien buffer',size,s)
+	for i=1,#s do
+		local c = s:sub(i,i)
+		local b = c:byte()
+		print(b,c)
+	end
+end
+
 --debugging functions
 local function dump_recursive(v,k,i,trace)
 	i = i or 0

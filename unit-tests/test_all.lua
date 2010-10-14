@@ -1,3 +1,4 @@
+#!/usr/bin/lua
 --[[
 	semi-automated test suite for the fbclient Lua binding.
 	before reporting a bug, make sure this script doesn't break for you.
@@ -17,13 +18,14 @@ local function add(ok_num,fail_num)
 	total_fail_num = total_fail_num + fail_num
 end
 
---add(config.run('test_binding.lua')) --pass
-add(config.run('test_wrapper.lua')) --fail!!!
---add(config.run('test_class.lua')) --pass
---add(config.run('test_xsqlvar.lua')) --pass
---add(config.run('test_blob.lua')) --pass
---add(config.run('test_service_wrapper.lua')) --pass
---add(config.run('test_service_class.lua')) --pass
+local included_comb={{lib='fbclient',ver='2.5.0',server_ver='2.5.0'}}
+--add(config.run('test_binding.lua',included_comb)) --pass
+--add(config.run('test_wrapper.lua',included_comb)) --fail!!!
+--add(config.run('test_class.lua',included_comb)) --pass
+add(config.run('test_xsqlvar.lua',included_comb)) --pass
+--add(config.run('test_blob.lua',included_comb)) --pass
+--add(config.run('test_service_wrapper.lua',included_comb)) --pass
+--add(config.run('test_service_class.lua',included_comb)) --pass
 
 print(('Grand total for all tests: %d ok, %d failed'):format(total_ok_num,total_fail_num))
 

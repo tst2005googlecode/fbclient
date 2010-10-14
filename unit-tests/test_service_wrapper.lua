@@ -1,3 +1,4 @@
+#!/usr/bin/lua
 --[[
 
 	Testing unit for service_wrapper.lua

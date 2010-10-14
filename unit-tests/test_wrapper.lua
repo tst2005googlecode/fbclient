@@ -1,3 +1,4 @@
+#!/usr/bin/lua
 --[[
 	Test unit for wrapper.lua
 

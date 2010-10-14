@@ -239,13 +239,13 @@ function dsql_prepare(fbapi, sv, dbh, trh, sth, sql, dialect, in_xsqlda, out_xsq
 	--prepare statement, getting the number of output columns, and eventually filling the xsqlvars
 	out_xsqlda = out_xsqlda or xsqlda.new(0)
 	fbtry(fbapi, sv, 'isc_dsql_prepare', trh, sth, #sql, sql, dialect, out_xsqlda)
-
 	--see if the xsqlda is long enough to keep all columns, and if not, reallocate and re-describe.
 	local alloc,used = xsqlda.decode(out_xsqlda)
 	if alloc < used then
 		out_xsqlda = xsqlda.new(used)
 		fbtry(fbapi, sv, 'isc_dsql_describe', sth, 1, out_xsqlda)
 	end
+	print(sql,alloc,used)
 
 	--allocate sqldata buffers for each output column, according to the xsqlvar description.
 	local out_t = {}

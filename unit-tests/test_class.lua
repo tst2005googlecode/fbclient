@@ -1,3 +1,5 @@
+#!/usr/bin/lua
+
 --[[
 	Test unit for class.lua
 

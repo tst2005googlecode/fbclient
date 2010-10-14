@@ -80,6 +80,8 @@ function decode_boolean(s) return struct.unpack('B',s) == 1 end
 --recieves a result buffer (not string!) and returns a table of the form option=body, where
 --body is either decoded with a suitable decoder (if any), or undecoded, as string.
 function decode(info_type,info_buf,info_buf_len,info_code_lookup,decoders,array_options,fbapi)
+	--dump(info_buf, info_buf_len)
+
 	local info={}
 	local ofs=1
 	while true do

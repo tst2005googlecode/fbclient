@@ -20,3 +20,5 @@
 
 - finish bignum.lua and add decimal_bignum.lua
 
+- bind lgmp
+

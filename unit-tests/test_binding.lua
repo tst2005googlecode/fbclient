@@ -1,3 +1,4 @@
+#!/usr/bin/lua
 
 local config = require 'test_config'
 
