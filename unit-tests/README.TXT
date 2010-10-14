@@ -35,6 +35,7 @@ Linux platforms
 
 Install Lua packages loop, alien, lua-ex.
 If you want to test bignum support, install Lua packages ldecnumber, lbc, lmapm.
+* Note: lbc is not compiling for me on linux 64bit.
 a) linux 32bit: install firebird test servers:
   - download http://fbclient.googlecode.com/files/fbclient-unit-tests-linux32.tar.gz
   - untar it into this directory, cd into linux32 directory and run ./install_servers.sh
