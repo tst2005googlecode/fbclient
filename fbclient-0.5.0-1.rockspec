@@ -1,7 +1,7 @@
 package = 'fbclient'
 version = '0.5.0-1'
 source = {
-   url = 'http://fbclient.googlecode.com/files/fbclient-0.5.0.zip'
+   url = 'http://fbclient.googlecode.com/hg/fbclient-0.5.0.zip'
 }
 
 description = {
