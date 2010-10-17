@@ -1,15 +1,17 @@
 
-- test error cases!!!
-- add parameter validation ?
+- test everything on linux64
+	- lbc doesn't compile
+	- alien.struct is outdated
+
+- test error cases
+- add parameter validation
 
 - multithreaded tests:
 	- at:cancel_operation()
 	- trace API (decode trace)
 	- events API (add alien extension for async callbacks)
 
-- dld/setup linux binaries and test everything on linux
-
-- implement something like local x,i = st:first_row('select ...')
+- implement a shortcut for getting the values out of a singleton select
 
 - finish schema.lua
 	- test load everything
@@ -19,6 +21,5 @@
 	- add schema:export_differences([old_schema],[params...]) -> sql statement list with param values
 
 - finish bignum.lua and add decimal_bignum.lua
-
-- bind lgmp
+- finish lgmp.lua and add decimal_lgmp.lua
 
