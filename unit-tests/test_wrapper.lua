@@ -177,7 +177,7 @@ function test_everything(env)
 				isc_info_active_transactions=true,
 				isc_info_active_tran_count=post20 or nil,
 				isc_info_creation_date=post20 or nil,
-				isc_info_db_file_size=true,
+				isc_info_db_file_size=post20 or nil,
 				fb_info_page_contents = post21 and 1 or nil,
 			}
 			local info = api.db_info(fbapi, sv, dbh, t)
@@ -270,6 +270,7 @@ function test_everything(env)
 	test_attachment(dbh)
 	drop(dbh)
 
+	return 1,0
 end
 
 --local comb = {{lib='fbembed',ver='2.5.0'}}

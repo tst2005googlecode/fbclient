@@ -40,7 +40,7 @@ function test_everything(env)
 
 	local function test_server_info()
 		--server methods without parameters
-		for i,method in ipairs{
+		local t = {
 			'service_manager_version',
 			'server_version',
 			'server_implementation_string',
@@ -48,17 +48,22 @@ function test_everything(env)
 			'server_install_path',
 			'server_lock_path',
 			'server_msg_path',
-			'attachment_num',
-			'db_num',
-		} do
+		}
+		if not config.OS:find'^linux' or (not env.server_ver:find'^2%.0' and not env.server_ver:find'^2%.1') then
+			table.insert(t,'attachment_num')
+			table.insert(t,'db_num')
+		end
+		for i,method in ipairs(t) do
 			print(string.format('%s()',method),svc[method](svc))
-			dump_lines()
 			while svc:busy() do end
 		end
-		print('db_names()'); dump(svc:db_names())
+		if not config.OS:find'^linux' or (not env.server_ver:find'^2%.0' and not env.server_ver:find'^2%.1') then
+			print('db_names()'); dump(svc:db_names())
+		end
 	end
 
 	local function test_get_fb_log()
+		if config.OS:find'^linux' and (env.server_ver:find'^2%.0' or env.server_ver:find'^2%.1') then return end
 		print('server_log()'); svc:server_log()
 		dump_lines()
 		while svc:busy() do end

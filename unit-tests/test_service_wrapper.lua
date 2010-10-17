@@ -78,7 +78,7 @@ function test_everything(env)
 		local function test_info()
 			print('**** test_info ****')
 			dump(api.query(fbapi,sv,svh,{
-				isc_info_svc_svr_db_info		= (not env.server_ver:find'^2%.1' and not env.server_ver:find'^2%.0') or nil, --ok
+				isc_info_svc_svr_db_info		= not config.OS:find'^linux' or (not env.server_ver:find'^2%.1' and not env.server_ver:find'^2%.0') or nil, --ok
 				--isc_info_svc_get_license		= true, --not supported on firebird
 				--isc_info_svc_get_license_mask	= true, --not supported on firebird
 				isc_info_svc_get_config			= true, --nothing on firebird (marked TODO in jrd/svc.cpp)
@@ -101,6 +101,7 @@ function test_everything(env)
 		end
 
 		local function test_get_fb_log()
+			if config.OS:find'^linux' and (env.server_ver:find'^2%.0' or env.server_ver:find'^2%.1') then return end
 			print('**** test_get_fb_log ****')
 			api.start(fbapi,sv,svh,'isc_action_svc_get_fb_log')
 			query_action_faster()
