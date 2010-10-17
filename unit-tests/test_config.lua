@@ -171,15 +171,16 @@ function init(verbose)
 		cd = assert(cd,'Cannot detect current directory: `cd` command failed')
 
 		function setup_lib(libname, version)
-			path = cd..'\\win32\\'..(libname == 'fbembed' and 'fbembed'..'-'..version
-															or 'firebird'..'-'..version..'\\bin')
+			path = cd..'\\win32\\'..(libname == 'fbembed' and 'fbembed' or 'firebird')..'-'..version
+			binpath = path..(libname == 'fbembed' and '' or '\\bin')
+
 			assert(kernel32.SetDllDirectoryA(nil) ~= 0, what..'SetDllDirectoryA() error')
-			assert(kernel32.SetDllDirectoryA(path) ~= 0, what..'SetDllDirectoryA() error')
+			assert(kernel32.SetDllDirectoryA(binpath) ~= 0, what..'SetDllDirectoryA() error')
 
 			os.setenv('FIREBIRD',path)
 			assert(os.getenv('FIREBIRD')==path)
 
-			return path..'\\'..libname..'.dll'
+			return binpath..'\\'..libname..'.dll'
 		end
 	else
 		function setup_lib(libname, version)

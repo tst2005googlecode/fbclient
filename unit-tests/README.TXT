@@ -1,10 +1,5 @@
 This directory contains the automated test suite of the fbclient Lua package.
 
-Firebird binaries were downloaded from the firebirdsql.org website.
-Binary Lua modules were downloaded from their home websites where available,
-or compiled using LuaRocks where not.
-
-
 Windows 32bit platforms
 -----------------------
 
@@ -18,6 +13,13 @@ The installer will install multiple instances of Firebird server, one of each ve
 configured to listen on 127.0.0.1 port 3205, 3206, 3213, ... respectively, analogous
 server's version number.
 
+Firebird binaries were downloaded from the firebirdsql.org website.
+
+Lua C modules were compiled using LuaRocks in a Visual C++ 2010 environment.
+It is recommended that you compile them yourself on your own machine
+and replace them if possible, just in case I have a virus on my computer
+that I am unaware of.
+
 Run the test script (the bat will use the bundled Lua interpreter):
 
 	> run_test_file.bat test_all.lua
@@ -28,7 +30,6 @@ When you're done testing:
 
 	> cd win32
 	win32> uninstall_servers.bat
-
 
 Linux platforms
 ---------------

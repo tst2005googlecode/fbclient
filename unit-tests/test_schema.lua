@@ -20,7 +20,6 @@ function test_everything(env)
 	trace = newtrace('each')
 
 	traceall('start')
-
 	trace('start')
 
 	local sch = require 'fbclient.schema'
@@ -41,19 +40,20 @@ function test_everything(env)
 		procedure_args = true,
 		procedure_source = true,
 		view_source = true,
+		system_flag = true,
 	})
 
 	dump(schema)
 
 	trace('load all')
 
-	at:close()
+	next(tr.attachments):close()
 
 	traceall('end')
 
 	--profiler.end()
 end
 
---local comb = {{lib='fbembed',ver='2.1.3'}}
+local comb = {{lib='fbembed',ver='2.5.0'}}
 config.run(test_everything,comb,nil,...)
 

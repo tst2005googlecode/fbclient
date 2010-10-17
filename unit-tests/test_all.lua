@@ -1,9 +1,9 @@
 #!/usr/bin/lua
 --[[
-	semi-automated test suite for the fbclient Lua binding.
-	before reporting a bug, make sure this script doesn't break for you.
+	Automated test suite for the fbclient Lua binding.
+	Before reporting a bug, make sure this script doesn't break for you.
 
-	WARNING: look into test_config.lua before running this script
+	Read README.TXT before running this script.
 
 ]]
 

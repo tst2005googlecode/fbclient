@@ -5,8 +5,13 @@
 	schema:load()
 	schema:close()
 
-	Possible improvements:
-	- keep prepared statements open for reuse
+	LIMITATIONS:
+	- Firebird 2.5 only
+
+	SCHEMA:
+		- dependency tree -> insert/update/delete order
+		-
+
 
 ]]
 
@@ -15,6 +20,10 @@ module(...,require 'fbclient.init')
 local oo = require 'loop.multiple'
 local list = require 'fbclient.list'
 require 'fbclient.blob'
+
+local function bool2int(b)
+	return b and 1 or nil
+end
 
 SelectedList = list.SelectedList
 IndexedList = list.IndexedList
@@ -39,24 +48,32 @@ function new(transaction)
 	self.foreign_keys = foreign_keys_class()
 	self.indices = indices_class()
 	]]
+
+	self.charsets.foreign_keys = {
+		default_collate = {
+			list = self.collations,
+			lookup_key = 'NAME',
+		}
+	}
+
 	return self
 end
 
 function Schema:load(tr,opts)
 	opts = opts or {}
-	local system_flag = opts.system_objects and 1 or nil
 	if opts.security then
 		self.security_classes:load(tr)
-		self.roles:load(tr,system_flag)
+		self.roles:load(tr,nil,opts.system_flag)
 	end
-	self.generators:load(tr,system_flag)
-	self.exceptions:load(tr,system_flag)
-	self.charsets:load(tr,system_flag,opts.charset_collations and 1 or nil)
-	self.collations:load(tr,system_flag)
-	self.domains:load(tr,system_flag)
-	self.functions:load(tr,system_flag,opts.function_args and 1 or nil)
-	self.procedures:load(tr,system_flag,opts.procedure_args and 1 or nil,opts.procedure_source and 1 or nil)
-	self.tables:load(tr,system_flag,opts.table_fields and 1 or nil,opts.view_source and 1 or nil)
+	self.generators:load(tr,nil,opts.system_flag)
+	self.exceptions:load(tr,nil,opts.system_flag)
+	self.charsets:load(tr,nil,opts.system_flag)
+	self.collations:load(tr,nil,opts.system_flag)
+	self.charsets:fix_references()
+	self.domains:load(tr,nil,opts.system_flag)
+	self.functions:load(tr,system_flag,nil,opts.system_flag)
+	self.procedures:load(tr,nil,opts.procedure_source,opts.system_flag)
+	self.tables:load(tr,nil,opts.view_source,opts.system_flag)
 	if opts.security then
 		--self.priviledges:load(nil)
 	end
@@ -69,8 +86,8 @@ end
 SecurityClass = oo.class()
 
 SecurityClassList = oo.class({
-	keys = {name = true},
-	primary_key = 'name',
+	keys = {NAME = true},
+	primary_key = 'NAME',
 	select_query = function(self,name)
 		return [[
 			select
@@ -89,9 +106,10 @@ SecurityClassList = oo.class({
 Role = oo.class()
 
 RoleList = oo.class({
-	keys = {name = true},
-	primary_key = 'name',
+	keys = {NAME = true},
+	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
+		system_flag = bool2int(system_flag)
 		return [[
 			select
 				rdb$role_name as name,
@@ -111,9 +129,10 @@ RoleList = oo.class({
 Generator = oo.class()
 
 GeneratorList = oo.class({
-	keys = {name = true, id = true},
-	primary_key = 'name',
+	keys = {NAME = true, ID = true},
+	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
+		system_flag = bool2int(system_flag)
 		return [[
 			select
 				rdb$generator_id as id,
@@ -133,9 +152,10 @@ GeneratorList = oo.class({
 Exception = oo.class()
 
 ExceptionList = oo.class({
-	keys = {name = true, number = true},
-	primary_key = 'name',
+	keys = {NAME = true, NUMBER = true},
+	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
+		system_flag = bool2int(system_flag)
 		return [[
 			select
 				rdb$exception_number as number,
@@ -156,13 +176,14 @@ ExceptionList = oo.class({
 Charset = oo.class()
 
 CollationList = oo.class({
-	keys = {id = true, name = true},
+	keys = {ID = true, NAME = true},
 }, IndexedList)
 
 CharsetList = oo.class({
-	keys = {name = true, id = true},
-	primary_key = 'name',
+	keys = {NAME = true, ID = true},
+	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
+		system_flag = bool2int(system_flag)
 		return [[
 			select
 				c.rdb$character_set_id as id,
@@ -180,16 +201,20 @@ CharsetList = oo.class({
 		c.collations = CollationList()
 		return c
 	end,
+	fix_references = function(self,c)
+		--c.default_collate = c.collations.by_name[c.default_collate]
+	end,
 }, IndexedList, SelectedList)
 
 Collation = oo.class()
 
 CollationSelectList = oo.class({
-	master_key = 'id',
-	parent_key = 'charset_id',
+	master_key = 'ID',
+	parent_key = 'CHARSET_ID',
 	detail_list_name = 'collations',
-	primary_key = 'id',
+	primary_key = 'ID',
 	select_query = function(self,charset_id,system_flag)
+		system_flag = bool2int(system_flag)
 		return [[
 			select
 				c.rdb$collation_id as id,
@@ -208,9 +233,10 @@ CollationSelectList = oo.class({
 Domain = oo.class()
 
 DomainList = oo.class({
-	keys = {name = true},
-	primary_key = 'name',
+	keys = {NAME = true},
+	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
+		system_flag = bool2int(system_flag)
 		return [[
 			select
 				f.rdb$field_name as name,
@@ -259,9 +285,10 @@ DomainList = oo.class({
 Function = oo.class()
 
 FunctionList = oo.class({
-	keys = {name = true},
-	primary_key = 'name',
+	keys = {NAME = true},
+	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
+		system_flag = bool2int(system_flag)
 		return [[
 			select
 				f.rdb$function_name as name,
@@ -287,11 +314,12 @@ FunctionList = oo.class({
 FunctionArgs = oo.class()
 
 FunctionArgList = oo.class({
-	primary_key = 'position',
-	master_key = 'name',
-	parent_key = 'function_name',
+	primary_key = 'POSITION',
+	master_key = 'NAME',
+	parent_key = 'FUNCTION_NAME',
 	detail_list_name = 'args',
 	select_query = function(self,charset_id,system_flag)
+		system_flag = bool2int(system_flag)
 		return [[
 			select
 				a.rdb$function_name as function_name,
@@ -328,9 +356,10 @@ FunctionArgList = oo.class({
 Procedure = oo.class()
 
 ProcedureList = oo.class({
-	keys = {name = true, id = true},
-	primary_key = 'name',
+	keys = {NAME = true, ID = true},
+	primary_key = 'NAME',
 	select_query = function(self,name,system_flag,with_source)
+		system_flag = bool2int(system_flag)
 		return [[
 			select
 				p.rdb$procedure_id as id,
@@ -354,9 +383,10 @@ ProcedureList = oo.class({
 Table = oo.class()
 
 TableList = oo.class({
-	keys = {name = true, id = true},
-	primary_key = 'name',
+	keys = {NAME = true, ID = true},
+	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
+		system_flag = bool2int(system_flag)
 		return [[
 			select
 				r.rdb$relation_id as id,
@@ -391,11 +421,12 @@ TableList = oo.class({
 TableField = oo.class()
 
 TableFieldList = oo.class({
-	primary_key = 'name',
-	master_key = 'name',
-	parent_key = 'table_name',
+	primary_key = 'NAME',
+	master_key = 'NAME',
+	parent_key = 'TABLE_NAME',
 	detail_list_name = 'fields',
 	select_query = function(self,name,system_flag,table_name)
+		system_flag = bool2int(system_flag)
 		return [[
 			select
 				rf.rdb$field_id as id, --doesn't survive backup/restore
@@ -433,9 +464,10 @@ TableFieldList = oo.class({
 Index = oo.class()
 
 IndexList = oo.class({
-	keys = {name = true},
-	primary_key = 'name',
+	keys = {NAME = true},
+	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
+		system_flag = bool2int(system_flag)
 		return [[
 			select
 				i.rdb$index_name,
