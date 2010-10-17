@@ -24,7 +24,7 @@
 
 module(...,require 'fbclient.init')
 
-local mapm = require 'mapm' -- yes, the module is called mapm, not lmapm!
+local mapm = require 'mapm'
 local xsqlvar_class = require('fbclient.xsqlvar').xsqlvar_class
 local MAPM_ZERO = mapm.number(0)
 mapm_meta = getmetatable(MAPM_ZERO)
@@ -36,7 +36,7 @@ end
 
 -- scale up a decimal number and convert it into the corresponding lo,hi dword pairs of its int64 representation.
 function sdf(d,scale)
-	local hi,lo = mapm.idiv(d*10^-scale,2^32) --idiv returns quotient,reminder.
+	local hi,lo = mapm.idiv(d*10^-scale,2^32) --idiv returns quotient,remainder.
 	if d < MAPM_ZERO then
 		hi = hi - 1
 		lo = lo + 2^32

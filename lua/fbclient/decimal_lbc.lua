@@ -24,7 +24,7 @@
 
 module(...,require 'fbclient.init')
 
-local bc = require 'bc' -- yes, the module is called bc, not lbc!
+local bc = require 'bc'
 local xsqlvar_class = require('fbclient.xsqlvar').xsqlvar_class
 local BC_ZERO = bc.number(0)
 bc_meta = getmetatable(BC_ZERO)
@@ -36,7 +36,7 @@ end
 
 -- scale up a decimal number and convert it into the corresponding lo,hi dword pairs of its int64 representation.
 function sdf(d,scale)
-	local hi,lo = bc.divmod(d*10^-scale,2^32) --divmod returns quotient,reminder.
+	local hi,lo = bc.divmod(d*10^-scale,2^32) --divmod returns quotient,remainder.
 	if d < BC_ZERO then
 		hi = hi-1
 		lo = lo + 2^32
