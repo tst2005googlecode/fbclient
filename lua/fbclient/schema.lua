@@ -18,76 +18,17 @@
 module(...,require 'fbclient.init')
 
 local oo = require 'loop.multiple'
-local list = require 'fbclient.list'
+local List = require 'fbclient.list2'
 require 'fbclient.blob'
 
 local function bool2int(b)
 	return b and 1 or nil
 end
 
-SelectedList = list.SelectedList
-IndexedList = list.IndexedList
-DetailList = list.DetailList
-
-Schema = oo.class()
-
-function new(transaction)
-	local self = Schema()
-	self.security_classes = SecurityClassList()
-	self.roles = RoleList()
-	--self.priviledges = priviledges_class()
-	self.generators = GeneratorList()
-	self.exceptions = ExceptionList()
-	self.charsets = CharsetList()
-	self.collations = CollationSelectList(self.charsets)
-	self.domains = DomainList()
-	self.functions = FunctionList()
-	self.procedures = ProcedureList()
-	self.tables = TableList()
-	--[[
-	self.foreign_keys = foreign_keys_class()
-	self.indices = indices_class()
-	]]
-
-	self.charsets.foreign_keys = {
-		default_collate = {
-			list = self.collations,
-			lookup_key = 'NAME',
-		}
-	}
-
-	return self
-end
-
-function Schema:load(tr,opts)
-	opts = opts or {}
-	if opts.security then
-		self.security_classes:load(tr)
-		self.roles:load(tr,nil,opts.system_flag)
-	end
-	self.generators:load(tr,nil,opts.system_flag)
-	self.exceptions:load(tr,nil,opts.system_flag)
-	self.charsets:load(tr,nil,opts.system_flag)
-	self.collations:load(tr,nil,opts.system_flag)
-	self.charsets:fix_references()
-	self.domains:load(tr,nil,opts.system_flag)
-	self.functions:load(tr,system_flag,nil,opts.system_flag)
-	self.procedures:load(tr,nil,opts.procedure_source,opts.system_flag)
-	self.tables:load(tr,nil,opts.view_source,opts.system_flag)
-	if opts.security then
-		--self.priviledges:load(nil)
-	end
-	--[[
-	self.foreign_keys:load()
-	self.indices:load()
-	]]
-end
-
 SecurityClass = oo.class()
 
 SecurityClassList = oo.class({
 	keys = {NAME = true},
-	primary_key = 'NAME',
 	select_query = function(self,name)
 		return [[
 			select
@@ -101,13 +42,12 @@ SecurityClassList = oo.class({
 			]], name, name
 	end,
 	create_element = function(self,st) return SecurityClass() end,
-}, IndexedList, SelectedList)
+}, List)
 
 Role = oo.class()
 
 RoleList = oo.class({
 	keys = {NAME = true},
-	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
@@ -124,13 +64,18 @@ RoleList = oo.class({
 			]], system_flag, system_flag, name, name
 	end,
 	create_element = function(self,st) return Role() end,
-}, IndexedList, SelectedList)
+	queries = {
+		insert = {
+			format_sql(""),
+			format_sql("comment on sequence %name is '%description'", e),
+		}
+
+}, List)
 
 Generator = oo.class()
 
 GeneratorList = oo.class({
 	keys = {NAME = true, ID = true},
-	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
@@ -147,13 +92,19 @@ GeneratorList = oo.class({
 			]], system_flag, system_flag, name, name
 	end,
 	create_element = function(self,st) return Generator() end,
-}, IndexedList, SelectedList)
+	queries = {
+		insert = function(e)
+			return {
+				format_sql("create sequence %name", e),
+				format_sql("comment on sequence %name is '%description'", e),
+			}
+		end,
+}, List)
 
 Exception = oo.class()
 
 ExceptionList = oo.class({
 	keys = {NAME = true, NUMBER = true},
-	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
@@ -171,17 +122,20 @@ ExceptionList = oo.class({
 			]], system_flag, system_flag, name, name
 	end,
 	create_element = function(self,st) return Exception() end,
-}, IndexedList, SelectedList)
+}, List)
 
 Charset = oo.class()
 
 CollationList = oo.class({
 	keys = {ID = true, NAME = true},
-}, IndexedList)
+}, List)
 
 CharsetList = oo.class({
 	keys = {NAME = true, ID = true},
-	primary_key = 'NAME',
+	foreign_keys = {
+		default_collation = {'DEFAULT_COLLATE','NAME'},
+	},
+
 	select_query = function(self,name,system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
@@ -201,19 +155,16 @@ CharsetList = oo.class({
 		c.collations = CollationList()
 		return c
 	end,
-	fix_references = function(self,c)
-		--c.default_collate = c.collations.by_name[c.default_collate]
-	end,
-}, IndexedList, SelectedList)
+}, List)
 
 Collation = oo.class()
 
 CollationSelectList = oo.class({
+	keys = {NAME = true},
 	master_key = 'ID',
 	parent_key = 'CHARSET_ID',
 	detail_list_name = 'collations',
-	primary_key = 'ID',
-	select_query = function(self,charset_id,system_flag)
+	select_query = function(self,name,charset_id,system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
@@ -224,17 +175,21 @@ CollationSelectList = oo.class({
 				rdb$collations c
 			where
 				(c.rdb$system_flag = ? or ? is null)
+				and (c.rdb$collation_name = ? or ? is null)
 				and (c.rdb$character_set_id = ? or ? is null)
-		]], system_flag, system_flag, charset_id, charset_id
+		]], system_flag, system_flag, name, name, charset_id, charset_id
 	end,
 	create_element = function(self,st) return Collation() end,
-}, DetailList, SelectedList)
+	queries = {
+		insert = function(e)
+			return 'create collation %name for charset %charset from external (\'%extname\')'
+		end,
+}, List)
 
 Domain = oo.class()
 
 DomainList = oo.class({
 	keys = {NAME = true},
-	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
@@ -277,16 +232,12 @@ DomainList = oo.class({
 			]], system_flag, system_flag, name, name
 		end,
 		create_element = function(self,st) return Domain() end,
-		update_element = function(self,e,st)
-			SelectedList.update_element(self,e,st)
-		end,
-}, IndexedList, SelectedList)
+}, List)
 
 Function = oo.class()
 
 FunctionList = oo.class({
 	keys = {NAME = true},
-	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
@@ -305,16 +256,11 @@ FunctionList = oo.class({
 			]], system_flag, system_flag, name, name
 	end,
 	create_element = function(self,st) return Function() end,
-	update_element = function(self,e,st)
-		SelectedList.update_element(self,e,st)
-		e.args = FunctionArgs(e)
-	end,
-}, IndexedList, SelectedList)
+}, List)
 
 FunctionArgs = oo.class()
 
 FunctionArgList = oo.class({
-	primary_key = 'POSITION',
 	master_key = 'NAME',
 	parent_key = 'FUNCTION_NAME',
 	detail_list_name = 'args',
@@ -348,16 +294,12 @@ FunctionArgList = oo.class({
 			]], system_flag, system_flag, name, name
 		end,
 		create_element = function(self,st) return FunctionArgs() end,
-		update_element = function(self,e,st)
-			SelectedList.update_element(self,e,st)
-		end,
-}, DetailList, SelectedList)
+}, List)
 
 Procedure = oo.class()
 
 ProcedureList = oo.class({
 	keys = {NAME = true, ID = true},
-	primary_key = 'NAME',
 	select_query = function(self,name,system_flag,with_source)
 		system_flag = bool2int(system_flag)
 		return [[
@@ -374,17 +316,16 @@ ProcedureList = oo.class({
 			]], with_source, system_flag, system_flag, name, name
 	end,
 	create_element = function(self,st) return Procedure() end,
-	update_element = function(self,e,st)
-		SelectedList.update_element(self,e,st)
-		e.args = ProcedureArgList(e)
-	end,
-}, IndexedList, SelectedList)
+}, List)
 
 Table = oo.class()
 
+TableFieldList = oo.class({
+	keys = {},
+}, List)
+
 TableList = oo.class({
 	keys = {NAME = true, ID = true},
-	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
@@ -412,16 +353,11 @@ TableList = oo.class({
 			]], system_flag, system_flag, name, name
 	end,
 	create_element = function(self,st) return Table() end,
-	update_element = function(self,e,st)
-		SelectedList.update_element(self,e,st)
-		e.fields = TableFieldList(e)
-	end,
-}, IndexedList, SelectedList)
+}, List)
 
 TableField = oo.class()
 
-TableFieldList = oo.class({
-	primary_key = 'NAME',
+TableFieldSelectList = oo.class({
 	master_key = 'NAME',
 	parent_key = 'TABLE_NAME',
 	detail_list_name = 'fields',
@@ -456,16 +392,12 @@ TableFieldList = oo.class({
 			]], system_flag, system_flag, name, name
 	end,
 	create_element = function(self,st) return TableField() end,
-	update_element = function(self,e,st)
-		SelectedList.update_element(self,e,st)
-	end,
-}, DetailList, SelectedList)
+}, List)
 
 Index = oo.class()
 
 IndexList = oo.class({
 	keys = {NAME = true},
-	primary_key = 'NAME',
 	select_query = function(self,name,system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
@@ -485,7 +417,7 @@ IndexList = oo.class({
 		]]
 	end,
 	create_element = function(self,st) return Index() end,
-}, IndexedList, SelectedList)
+}, List)
 
 ForeignKey = oo.class()
 
@@ -507,5 +439,67 @@ ForeignKeyList = oo.class({
 			rdb$
 		]]
 	end,
-}, DetailList, SelectedList)
+}, List)
+
+Schema = oo.class()
+
+function Schema:__init(lists)
+	local self = oo.rawnew(self, {
+		lists = lists
+	})
+	return self
+end
+
+function new(transaction)
+	local self = Schema()
+	self.security_classes = SecurityClassList()
+	self.roles = RoleList()
+	--self.priviledges = PriviledgeList()
+	self.generators = GeneratorList()
+	self.exceptions = ExceptionList()
+	self.charsets = CharsetList()
+	self.collations = CollationSelectList{master_list = self.charsets}
+	self.charsets.foreign_lists = {default_collation = self.collations}
+	self.domains = DomainList()
+	self.functions = FunctionList()
+	self.procedures = ProcedureList()
+	self.tables = TableList()
+	--[[
+	self.foreign_keys = ForeignKeyList()
+	self.indices = IndexList()
+	]]
+	return self
+end
+
+function Schema:load(tr,opts)
+	opts = opts or {}
+	self.generators:load(tr,nil,opts.system_flag)
+	--[[
+	if opts.security then
+		self.security_classes:load(tr)
+		self.roles:load(tr,nil,opts.system_flag)
+	end
+	self.charsets:load(tr,nil,opts.system_flag)
+	if opts.collations then
+		self.collations:load(tr,nil,nil,opts.system_flag)
+	end
+	self.charsets:fix_refs()
+	self.exceptions:load(tr,nil,opts.system_flag)
+	self.domains:load(tr,nil,opts.system_flag)
+	self.functions:load(tr,system_flag,nil,opts.system_flag)
+	if opts.function_args then
+		self.function_args:load(tr,system_flag,nil,opts.system_flag)
+	end
+	self.procedures:load(tr,nil,opts.procedure_source,opts.system_flag)
+	self.tables:load(tr,nil,opts.view_source,opts.system_flag)
+	if opts.table_fields then
+		self.table_fields:load(tr,nil,nil,opts.system_flag)
+	end
+	if opts.security then
+		--self.priviledges:load(nil)
+	end
+	self.foreign_keys:load()
+	self.indices:load()
+	]]
+end
 

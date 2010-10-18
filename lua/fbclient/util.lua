@@ -178,27 +178,29 @@ function dump_buffer(buf,size)
 end
 
 --debugging functions
-local function dump_recursive(v,k,i,trace)
+local function dump_recursive(v,k,i,trace,level)
 	i = i or 0
+	local indent = 2
+	if level and i > level then return end
 	if applicable(v,'__pairs') and not applicable(v,'__tostring') then
 		if trace[v] then
-			print((' '):rep(i)..(k and '['..tostring(k)..'] => ' or '')..'<traced>')
+			print((' '):rep(i*indent)..(k and '['..tostring(k)..'] => ' or '')..'<traced>')
 		else
 			trace[v] = true
-			print((' '):rep(i)..(k and '['..tostring(k)..'] => ' or '')..type(v))
+			print((' '):rep(i*indent)..(k and '['..tostring(k)..'] => ' or '')..type(v))
 			for kk,vv in pairs(v) do
 				kk = applicable(kk,'__tostring') and kk or '('..type(kk)..')'
-				dump_recursive(vv,kk,i+2,trace)
+				dump_recursive(vv,kk,i+1,trace,level)
 			end
 		end
 	else
-		print((' '):rep(i)..(k and '['..k..'] => ' or '')..tostring(v))
+		print((' '):rep(i*indent)..(k and '['..k..'] => ' or '')..tostring(v))
 	end
 end
 
 --table dump for debugging purposes
-function dump(v)
+function dump(v,level)
 	local trace = setmetatable({},{ __mode = 'k' })
-	dump_recursive(v,nil,nil,trace)
+	dump_recursive(v,nil,nil,trace,level)
 end
 

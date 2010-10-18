@@ -34,12 +34,11 @@ function test_everything(env)
 
 	schema:load(tr, {
 		security = true,
-		charset_collations = true,
+		collations = true,
 		function_args = true,
 		table_fields = true,
 		procedure_args = true,
-		procedure_source = true,
-		view_source = true,
+		source_code = true,
 		system_flag = true,
 	})
 
