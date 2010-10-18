@@ -1,35 +1,82 @@
---[[
-	Inspecting and changing the schema (metadata) of a Firebird database
-
-	new(transaction) -> schema;
-	schema:load()
-	schema:close()
-
-	LIMITATIONS:
-	- Firebird 2.5 only
-
-	SCHEMA:
-		- dependency tree -> insert/update/delete order
-		-
-
-
-]]
 
 module(...,require 'fbclient.init')
 
-local oo = require 'loop.multiple'
-local List = require 'fbclient.list2'
+local oo = require 'loop.simple'
 require 'fbclient.blob'
 
 local function bool2int(b)
 	return b and 1 or nil
 end
 
-SecurityClass = oo.class()
+local function format_sql(sql, e)
+	return (sql:gsub('%%([%w_]+)', e))
+end
 
-SecurityClassList = oo.class({
-	keys = {NAME = true},
-	select_query = function(self,name)
+local function newe(st,e)
+	local e = e or {}
+	for i,col in ipairs(st.columns) do
+		e[col.column_alias_name] = col:get()
+	end
+	return e
+end
+
+local function load(tr,new,add,...)
+	for st in tr:exec(...) do
+		local e = new(st)
+		add(e)
+	end
+	return t
+end
+
+local function index(e,t,...)
+	for i=1,select('#',...) do
+		local key = select(i,...)
+		t['by_'..key][e[key]] = e
+	end
+end
+
+local function index_all(t,indext,...)
+	for i,e in ipairs(t) do
+		index(e,indext,...)
+	end
+end
+
+local function getfe(e, t, lk, fk)
+	return t['by_'..fk][e[lk]]
+end
+
+local function link(e, t, key, lk, fk)
+	e[key] = getfe(e, t, lk, fk) or e[key]
+end
+
+local function route(e, mt, lk, mk, dk, drefk,...)
+	local fe = getfe(e, mt, lk, mk)
+	if fe then
+		local dt = fe[dk]
+		if dt then
+			if drefk then
+				e[drefk] = fe
+			end
+			index(e,dt,...)
+		end
+	end
+end
+
+local function indexf(t,...)
+	return function(e)
+		index(e,t,...)
+	end
+end
+
+local function routef(mt, lk, mk, dk, drefk,...)
+	return function(e)
+		route(e, mt, lk, mk, dk, drefk,...)
+	end
+end
+
+local load_security_classes
+do
+	local function query(name)
 		return [[
 			select
 				rdb$security_class as name,
@@ -40,15 +87,16 @@ SecurityClassList = oo.class({
 			where
 				rdb$security_class = ? or ? is null
 			]], name, name
-	end,
-	create_element = function(self,st) return SecurityClass() end,
-}, List)
+	end
 
-Role = oo.class()
+	function load_security_classes(tr,t,...)
+		load(tr, newe, indexf(t, 'NAME'), query(...))
+	end
+end
 
-RoleList = oo.class({
-	keys = {NAME = true},
-	select_query = function(self,name,system_flag)
+local load_roles
+do
+	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
@@ -62,21 +110,19 @@ RoleList = oo.class({
 				(rdb$system_flag = ? or ? is null)
 				and (rdb$role_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
-	end,
-	create_element = function(self,st) return Role() end,
-	queries = {
-		insert = {
-			format_sql(""),
-			format_sql("comment on sequence %name is '%description'", e),
-		}
+	end
 
-}, List)
+	function load_roles(tr,t,...)
+		load(tr, newe, indexf(t, 'NAME'), query(...))
+	end
+end
+local function describe_role_query(e)
+	return format_sql("comment on sequence %NAME is '%DESCRIPTION'", e)
+end
 
-Generator = oo.class()
-
-GeneratorList = oo.class({
-	keys = {NAME = true, ID = true},
-	select_query = function(self,name,system_flag)
+local load_generators
+do
+	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
@@ -90,22 +136,30 @@ GeneratorList = oo.class({
 				(rdb$system_flag = ? or ? is null)
 				and (rdb$generator_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
-	end,
-	create_element = function(self,st) return Generator() end,
-	queries = {
-		insert = function(e)
-			return {
-				format_sql("create sequence %name", e),
-				format_sql("comment on sequence %name is '%description'", e),
-			}
-		end,
-}, List)
+	end
 
-Exception = oo.class()
+	function load_generators(tr, t, name,...)
+		load(tr, newe, indexf(t, 'ID', 'NAME'), query(name,...))
+		if name then
+			for st, value in tr:exec(format_sql("select gen_id(%NAME,0) from rdb$database", name)) do
+				t.by_NAME[name].VALUE = value
+			end
+		else
+			for name, e in pairs(t.by_NAME) do
+				for st, value in tr:exec(format_sql("select gen_id(%NAME,0) from rdb$database", name)) do
+					e.VALUE = value
+				end
+			end
+		end
+	end
+end
+local function create_generator_query(e) return format_sql("create sequence %NAME", e) end
+local function describe_generator_query(e) return format_sql("comment on sequence %NAME% is '%DESCRIPTION'", e) end
+local function set_generator_query(e) return format_sql("alter sequence %NAME restart with %VALUE", e) end
 
-ExceptionList = oo.class({
-	keys = {NAME = true, NUMBER = true},
-	select_query = function(self,name,system_flag)
+local load_exceptions
+do
+	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
@@ -120,23 +174,16 @@ ExceptionList = oo.class({
 				(rdb$system_flag = ? or ? is null)
 				and (rdb$exception_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
-	end,
-	create_element = function(self,st) return Exception() end,
-}, List)
+	end
 
-Charset = oo.class()
+	function load_exceptions(tr, t,...)
+		load(tr, newe, indexf(t, 'NUMBER', 'NAME'), query(...))
+	end
+end
 
-CollationList = oo.class({
-	keys = {ID = true, NAME = true},
-}, List)
-
-CharsetList = oo.class({
-	keys = {NAME = true, ID = true},
-	foreign_keys = {
-		default_collation = {'DEFAULT_COLLATE','NAME'},
-	},
-
-	select_query = function(self,name,system_flag)
+local load_charsets
+do
+	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
@@ -149,28 +196,32 @@ CharsetList = oo.class({
 				(c.rdb$system_flag = ? or ? is null)
 				and (c.rdb$character_set_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
-	end,
-	create_element = function(self,st)
-		local c = Charset()
-		c.collations = CollationList()
-		return c
-	end,
-}, List)
+	end
 
-Collation = oo.class()
+	local function new(st)
+		local e = newe(st)
+		e.collations = {}
+		return e
+	end
 
-CollationSelectList = oo.class({
-	keys = {NAME = true},
-	master_key = 'ID',
-	parent_key = 'CHARSET_ID',
-	detail_list_name = 'collations',
-	select_query = function(self,name,charset_id,system_flag)
+	function load_charsets(tr, t, collations,...)
+		local function add(e)
+			index(e, t, 'ID', 'NAME')
+			link(e, collations, 'default_collation', 'DEFAULT_COLLATE', 'NAME')
+		end
+		load(tr, new, add, query(...))
+	end
+end
+
+local load_collations
+do
+	local function query(name, charset_id, system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
 				c.rdb$collation_id as id,
 				c.rdb$collation_name as name,
-				c.rdb$character_set_id as charset_id
+				c.rdb$character_set_id as charset_id,
 			from
 				rdb$collations c
 			where
@@ -178,19 +229,24 @@ CollationSelectList = oo.class({
 				and (c.rdb$collation_name = ? or ? is null)
 				and (c.rdb$character_set_id = ? or ? is null)
 		]], system_flag, system_flag, name, name, charset_id, charset_id
-	end,
-	create_element = function(self,st) return Collation() end,
-	queries = {
-		insert = function(e)
-			return 'create collation %name for charset %charset from external (\'%extname\')'
-		end,
-}, List)
+	end
 
-Domain = oo.class()
+	function load_collations(tr, t, charsets,...)
+		local function add(e)
+			index(e, t, 'NAME')
+			route(e, charsets, 'CHARSET_ID', 'ID', 'collations', 'charset', 'NAME')
+		end
+		load(tr, newe, add, query(...))
+	end
+end
+local create_collation_query(e)
+	return format_sql("create collation %NAME for charset %CHARSET_NAME from external ('%EXTNAME')",
+		function(key) return e[key] or e.charset.NAME end)
+end
 
-DomainList = oo.class({
-	keys = {NAME = true},
-	select_query = function(self,name,system_flag)
+local load_domains
+do
+	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
@@ -230,15 +286,16 @@ DomainList = oo.class({
 				(f.rdb$system_flag = ? or ? is null)
 				and (f.rdb$field_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
-		end,
-		create_element = function(self,st) return Domain() end,
-}, List)
+	end
 
-Function = oo.class()
+	function load_domains(tr, t,...)
+		load(tr, newe, indexf(t, 'NAME'), query(...))
+	end
+end
 
-FunctionList = oo.class({
-	keys = {NAME = true},
-	select_query = function(self,name,system_flag)
+local load_functions
+do
+	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
@@ -254,17 +311,16 @@ FunctionList = oo.class({
 				(f.rdb$system_flag = ? or ? is null)
 				and (f.rdb$function_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
-	end,
-	create_element = function(self,st) return Function() end,
-}, List)
+	end
 
-FunctionArgs = oo.class()
+	function load_functions(tr, t,...)
+		load(tr, newe, indexf(t, 'NAME'), query(...))
+	end
+end
 
-FunctionArgList = oo.class({
-	master_key = 'NAME',
-	parent_key = 'FUNCTION_NAME',
-	detail_list_name = 'args',
-	select_query = function(self,charset_id,system_flag)
+local load_function_args
+do
+	local function query(function_name, system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
@@ -292,15 +348,17 @@ FunctionArgList = oo.class({
 				(f.rdb$system_flag = ? or ? is null)
 				and (a.rdb$function_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
-		end,
-		create_element = function(self,st) return FunctionArgs() end,
-}, List)
+	end
 
-Procedure = oo.class()
+	function load_function_args(tr, functions,...)
+		local add = routef(functions, 'FUNCTION_NAME', 'NAME', 'args', 'function', 'NAME')
+		load(tr, newe, add, query(...))
+	end
+end
 
-ProcedureList = oo.class({
-	keys = {NAME = true, ID = true},
-	select_query = function(self,name,system_flag,with_source)
+local load_procedures
+do
+	local function query(name, with_source, system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
@@ -314,19 +372,16 @@ ProcedureList = oo.class({
 				(p.rdb$system_flag = ? or ? is null)
 				and (p.rdb$procedure_name = ? or ? is null)
 			]], with_source, system_flag, system_flag, name, name
-	end,
-	create_element = function(self,st) return Procedure() end,
-}, List)
+	end
 
-Table = oo.class()
+	function load_procedures(tr, t,...)
+		load(tr, newe, indexf(t, 'ID', 'NAME'), query(...))
+	end
+end
 
-TableFieldList = oo.class({
-	keys = {},
-}, List)
-
-TableList = oo.class({
-	keys = {NAME = true, ID = true},
-	select_query = function(self,name,system_flag)
+local load_tables
+do
+	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
@@ -351,17 +406,16 @@ TableList = oo.class({
 				(r.rdb$system_flag = ? or ? is null)
 				and (r.rdb$relation_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
-	end,
-	create_element = function(self,st) return Table() end,
-}, List)
+	end
 
-TableField = oo.class()
+	function load_tables(tr, t,...)
+		load(tr, newe, indexf(t, 'ID', 'NAME'), query(...))
+	end
+end
 
-TableFieldSelectList = oo.class({
-	master_key = 'NAME',
-	parent_key = 'TABLE_NAME',
-	detail_list_name = 'fields',
-	select_query = function(self,name,system_flag,table_name)
+local load_table_fields
+do
+	local function query(name, table_name, system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
@@ -390,11 +444,13 @@ TableFieldSelectList = oo.class({
 				(r.rdb$system_flag = ? or ? is null)
 				and (rf.rdb$relation_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
-	end,
-	create_element = function(self,st) return TableField() end,
-}, List)
+	end
 
-Index = oo.class()
+	function load_table_fields(tr, tables,...)
+		local add = routef(tables, 'TABLE_NAME', 'NAME', 'fields', 'table', 'NAME')
+		load(tr, newe, add, query(...))
+	end
+end
 
 IndexList = oo.class({
 	keys = {NAME = true},
