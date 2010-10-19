@@ -1,7 +1,6 @@
 
 module(...,require 'fbclient.init')
 
-local oo = require 'loop.simple'
 require 'fbclient.blob'
 
 local function bool2int(b)
@@ -28,16 +27,17 @@ local function load(tr,new,add,...)
 	return t
 end
 
+local function init_indices(t,...)
+	for i=1,select('#',...) do
+		local key = select(i,...)
+		t['by_'..key] = {}
+	end
+end
+
 local function index(e,t,...)
 	for i=1,select('#',...) do
 		local key = select(i,...)
 		t['by_'..key][e[key]] = e
-	end
-end
-
-local function index_all(t,indext,...)
-	for i,e in ipairs(t) do
-		index(e,indext,...)
 	end
 end
 
@@ -63,18 +63,28 @@ local function route(e, mt, lk, mk, dk, drefk,...)
 end
 
 local function indexf(t,...)
+	init_indices(t,...)
 	return function(e)
 		index(e,t,...)
 	end
 end
 
+local function init_routes(mt, mk, dk)
+	for k,e in pairs(t['by_'..mk]) do
+		e[dk] = {}
+	end
+end
+
 local function routef(mt, lk, mk, dk, drefk,...)
+	init_routes(mt, mk, dk)
 	return function(e)
 		route(e, mt, lk, mk, dk, drefk,...)
 	end
 end
 
-local load_security_classes
+local loaders = {}
+local queries = setmetatable({}, {__index = function(t,k) local v = {}; t[k] = v; return v end})
+
 do
 	local function query(name)
 		return [[
@@ -89,12 +99,11 @@ do
 			]], name, name
 	end
 
-	function load_security_classes(tr,t,...)
+	function loaders.security_classes(tr,t,...)
 		load(tr, newe, indexf(t, 'NAME'), query(...))
 	end
 end
 
-local load_roles
 do
 	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
@@ -112,15 +121,15 @@ do
 			]], system_flag, system_flag, name, name
 	end
 
-	function load_roles(tr,t,...)
+	function loaders.roles(tr,t,...)
 		load(tr, newe, indexf(t, 'NAME'), query(...))
 	end
 end
-local function describe_role_query(e)
+
+function queries.roles.describe(e)
 	return format_sql("comment on sequence %NAME is '%DESCRIPTION'", e)
 end
 
-local load_generators
 do
 	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
@@ -138,7 +147,7 @@ do
 			]], system_flag, system_flag, name, name
 	end
 
-	function load_generators(tr, t, name,...)
+	function loaders.generators(tr, t, name,...)
 		load(tr, newe, indexf(t, 'ID', 'NAME'), query(name,...))
 		if name then
 			for st, value in tr:exec(format_sql("select gen_id(%NAME,0) from rdb$database", name)) do
@@ -153,11 +162,11 @@ do
 		end
 	end
 end
-local function create_generator_query(e) return format_sql("create sequence %NAME", e) end
-local function describe_generator_query(e) return format_sql("comment on sequence %NAME% is '%DESCRIPTION'", e) end
-local function set_generator_query(e) return format_sql("alter sequence %NAME restart with %VALUE", e) end
 
-local load_exceptions
+function queries.generators.create(e) return format_sql("create sequence %NAME", e) end
+function queries.generators.describe(e) return format_sql("comment on sequence %NAME% is '%DESCRIPTION'", e) end
+function queries.generators.alter(e) return format_sql("alter sequence %NAME restart with %VALUE", e) end
+
 do
 	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
@@ -176,12 +185,11 @@ do
 			]], system_flag, system_flag, name, name
 	end
 
-	function load_exceptions(tr, t,...)
+	function loaders.exceptions(tr, t,...)
 		load(tr, newe, indexf(t, 'NUMBER', 'NAME'), query(...))
 	end
 end
 
-local load_charsets
 do
 	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
@@ -204,16 +212,16 @@ do
 		return e
 	end
 
-	function load_charsets(tr, t, collations,...)
+	function loaders.charsets(tr, t, collations,...)
 		local function add(e)
 			index(e, t, 'ID', 'NAME')
 			link(e, collations, 'default_collation', 'DEFAULT_COLLATE', 'NAME')
 		end
+		init_indices(t, 'ID', 'NAME')
 		load(tr, new, add, query(...))
 	end
 end
 
-local load_collations
 do
 	local function query(name, charset_id, system_flag)
 		system_flag = bool2int(system_flag)
@@ -231,20 +239,22 @@ do
 		]], system_flag, system_flag, name, name, charset_id, charset_id
 	end
 
-	function load_collations(tr, t, charsets,...)
+	function loaders.collations(tr, t, charsets,...)
 		local function add(e)
 			index(e, t, 'NAME')
 			route(e, charsets, 'CHARSET_ID', 'ID', 'collations', 'charset', 'NAME')
 		end
+		init_indices(t, 'NAME')
+		init_routes(charsets, 'ID', 'collations')
 		load(tr, newe, add, query(...))
 	end
 end
-local create_collation_query(e)
+
+function queries.collations.create(e)
 	return format_sql("create collation %NAME for charset %CHARSET_NAME from external ('%EXTNAME')",
 		function(key) return e[key] or e.charset.NAME end)
 end
 
-local load_domains
 do
 	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
@@ -288,12 +298,11 @@ do
 			]], system_flag, system_flag, name, name
 	end
 
-	function load_domains(tr, t,...)
+	function loaders.domains(tr, t,...)
 		load(tr, newe, indexf(t, 'NAME'), query(...))
 	end
 end
 
-local load_functions
 do
 	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
@@ -313,12 +322,11 @@ do
 			]], system_flag, system_flag, name, name
 	end
 
-	function load_functions(tr, t,...)
+	function loaders.functions(tr, t,...)
 		load(tr, newe, indexf(t, 'NAME'), query(...))
 	end
 end
 
-local load_function_args
 do
 	local function query(function_name, system_flag)
 		system_flag = bool2int(system_flag)
@@ -350,13 +358,12 @@ do
 			]], system_flag, system_flag, name, name
 	end
 
-	function load_function_args(tr, functions,...)
+	function loaders.function_args(tr, functions,...)
 		local add = routef(functions, 'FUNCTION_NAME', 'NAME', 'args', 'function', 'NAME')
 		load(tr, newe, add, query(...))
 	end
 end
 
-local load_procedures
 do
 	local function query(name, with_source, system_flag)
 		system_flag = bool2int(system_flag)
@@ -374,12 +381,11 @@ do
 			]], with_source, system_flag, system_flag, name, name
 	end
 
-	function load_procedures(tr, t,...)
+	function loaders.procedures(tr, t,...)
 		load(tr, newe, indexf(t, 'ID', 'NAME'), query(...))
 	end
 end
 
-local load_tables
 do
 	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
@@ -408,12 +414,11 @@ do
 			]], system_flag, system_flag, name, name
 	end
 
-	function load_tables(tr, t,...)
+	function loaders.tables(tr, t,...)
 		load(tr, newe, indexf(t, 'ID', 'NAME'), query(...))
 	end
 end
 
-local load_table_fields
 do
 	local function query(name, table_name, system_flag)
 		system_flag = bool2int(system_flag)
@@ -446,15 +451,14 @@ do
 			]], system_flag, system_flag, name, name
 	end
 
-	function load_table_fields(tr, tables,...)
+	function loaders.table_fields(tr, tables,...)
 		local add = routef(tables, 'TABLE_NAME', 'NAME', 'fields', 'table', 'NAME')
 		load(tr, newe, add, query(...))
 	end
 end
 
-IndexList = oo.class({
-	keys = {NAME = true},
-	select_query = function(self,name,system_flag)
+do
+	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
 		return [[
 			select
@@ -471,14 +475,15 @@ IndexList = oo.class({
 			from
 				rdb$indices i
 		]]
-	end,
-	create_element = function(self,st) return Index() end,
-}, List)
+	end
 
-ForeignKey = oo.class()
+	function loaders.indices(tr,t,...)
+		load(tr, newe, indexf(t, 'NAME'), query(...))
+	end
+end
 
-ForeignKeyList = oo.class({
-	select_query = function(self,name)
+do
+	local function query(name)
 		return [[
 			select
 			i.rdb$index_name,
@@ -494,68 +499,17 @@ ForeignKeyList = oo.class({
 		from
 			rdb$
 		]]
-	end,
-}, List)
+	end
 
-Schema = oo.class()
-
-function Schema:__init(lists)
-	local self = oo.rawnew(self, {
-		lists = lists
-	})
-	return self
+	function loaders.foreign_keys(tr,t,...)
+		load(tr, newe, indexf(t, 'NAME'), query(...))
+	end
 end
 
-function new(transaction)
-	local self = Schema()
-	self.security_classes = SecurityClassList()
-	self.roles = RoleList()
-	--self.priviledges = PriviledgeList()
-	self.generators = GeneratorList()
-	self.exceptions = ExceptionList()
-	self.charsets = CharsetList()
-	self.collations = CollationSelectList{master_list = self.charsets}
-	self.charsets.foreign_lists = {default_collation = self.collations}
-	self.domains = DomainList()
-	self.functions = FunctionList()
-	self.procedures = ProcedureList()
-	self.tables = TableList()
-	--[[
-	self.foreign_keys = ForeignKeyList()
-	self.indices = IndexList()
-	]]
-	return self
+function load(tr, opts)
+	loaders.security_classes()
+
+
 end
 
-function Schema:load(tr,opts)
-	opts = opts or {}
-	self.generators:load(tr,nil,opts.system_flag)
-	--[[
-	if opts.security then
-		self.security_classes:load(tr)
-		self.roles:load(tr,nil,opts.system_flag)
-	end
-	self.charsets:load(tr,nil,opts.system_flag)
-	if opts.collations then
-		self.collations:load(tr,nil,nil,opts.system_flag)
-	end
-	self.charsets:fix_refs()
-	self.exceptions:load(tr,nil,opts.system_flag)
-	self.domains:load(tr,nil,opts.system_flag)
-	self.functions:load(tr,system_flag,nil,opts.system_flag)
-	if opts.function_args then
-		self.function_args:load(tr,system_flag,nil,opts.system_flag)
-	end
-	self.procedures:load(tr,nil,opts.procedure_source,opts.system_flag)
-	self.tables:load(tr,nil,opts.view_source,opts.system_flag)
-	if opts.table_fields then
-		self.table_fields:load(tr,nil,nil,opts.system_flag)
-	end
-	if opts.security then
-		--self.priviledges:load(nil)
-	end
-	self.foreign_keys:load()
-	self.indices:load()
-	]]
-end
 
