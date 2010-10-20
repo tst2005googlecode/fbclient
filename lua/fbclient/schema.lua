@@ -1,6 +1,7 @@
 
 module(...,require 'fbclient.init')
 
+local oo = require 'loop.simple'
 require 'fbclient.blob'
 
 local function bool2int(b)
@@ -24,25 +25,25 @@ local function load(tr,new,add,...)
 		local e = new(st)
 		add(e)
 	end
-	return t
 end
 
-local function init_indices(t,...)
+local function newindex(...)
+	local t = {}
 	for i=1,select('#',...) do
 		local key = select(i,...)
-		t['by_'..key] = {}
+		t[key] = {}
 	end
 end
 
 local function index(e,t,...)
 	for i=1,select('#',...) do
 		local key = select(i,...)
-		t['by_'..key][e[key]] = e
+		t[key][e[key]] = e
 	end
 end
 
 local function getfe(e, t, lk, fk)
-	return t['by_'..fk][e[lk]]
+	return t[fk][e[lk]]
 end
 
 local function link(e, t, key, lk, fk)
@@ -63,30 +64,71 @@ local function route(e, mt, lk, mk, dk, drefk,...)
 end
 
 local function indexf(t,...)
-	init_indices(t,...)
 	return function(e)
 		index(e,t,...)
 	end
 end
 
-local function init_routes(mt, mk, dk)
-	for k,e in pairs(t['by_'..mk]) do
+local function newindexf(...)
+	local t = newindex(...)
+	return t, indexf(t,...)
+end
+
+local function newroute(mt, mk, dk)
+	for k,e in pairs(mt[mk]) do
 		e[dk] = {}
 	end
 end
 
 local function routef(mt, lk, mk, dk, drefk,...)
-	init_routes(mt, mk, dk)
 	return function(e)
 		route(e, mt, lk, mk, dk, drefk,...)
 	end
 end
 
-local loaders = {}
-local queries = setmetatable({}, {__index = function(t,k) local v = {}; t[k] = v; return v end})
+local function newroutef(mt, lk, mk, dk, drefk,...)
+	newroute(mt, mk, dk)
+	return routef(mt, lk, mk, dk, drefk,...)
+end
 
-do
-	local function query(name)
+local function indexload(tr, keys,...)
+	local t, set = newindexf(unpack(keys))
+	load(tr, newe, set,...)
+	return t, set
+end
+
+local function forall(t,f)
+	for k,e in pairs(t) do
+		f(e)
+	end
+end
+
+local function routeload(tr, mt, lk, mk, dk, drefk, dkeys,...)
+	local set = newroutef(mt, mk, dk, drefk, unpack(dkeys))
+	load(tr, newe, set,...)
+	return set
+end
+
+local function indexrouteload(tr, keys, mt, lk, mk, dk, drefk, dkeys,...)
+	local t, index = newindexf(unpack(keys))
+	local route = newroutef(mt, mk, dk, drefk, unpack(dkeys))
+	local function set(e)
+		index(e)
+		route(e)
+	end
+	load(tr, newe, set,...)
+	return t, set
+end
+
+objects = {}
+
+security_classes = setmetatable({}, {__index = objects})
+
+function security_classes:init()
+
+end
+
+security_classes.query(name)
 		return [[
 			select
 				rdb$security_class as name,
@@ -99,8 +141,23 @@ do
 			]], name, name
 	end
 
-	function loaders.security_classes(tr,t,...)
-		load(tr, newe, indexf(t, 'NAME'), query(...))
+	local keys = {'NAME'}
+
+	function security_classes:load(tr)
+		self.index, self.set = indexload(tr, keys,...)
+	end
+
+	function security_classes:clear(tr)
+		self.index, self.set = newindexf('NAME')
+	end
+
+	function security_class:update(tr,...)
+		load(tr, newe, self.set, query(...))
+	end
+
+	function security_classes:load(tr)
+		self:clear()
+		self:update(tr)
 	end
 end
 
@@ -206,13 +263,7 @@ do
 			]], system_flag, system_flag, name, name
 	end
 
-	local function new(st)
-		local e = newe(st)
-		e.collations = {}
-		return e
-	end
-
-	function loaders.charsets(tr, t, collations,...)
+	function charsets.load(tr, t, collations,...)
 		local function add(e)
 			index(e, t, 'ID', 'NAME')
 			link(e, collations, 'default_collation', 'DEFAULT_COLLATE', 'NAME')
