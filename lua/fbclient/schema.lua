@@ -19,12 +19,22 @@ local function index(e, t, keys)
 	end
 end
 
+local function unindex(e, t, keys)
+	for _,k in ipairs(keys) do
+		t[k][e[k]] = nil
+	end
+end
+
 local function getfe(e, ek, t, tk)
 	return t[tk][e[ek]]
 end
 
 local function link(e, ek, t, tk, fk)
 	e[fk] = getfe(e, ek, t, tk) or e[fk]
+end
+
+local function unlink(e, fk)
+	e[fk] = nil
 end
 
 local function route(e, ek, t, tk, dk, dkeys)
@@ -39,6 +49,16 @@ local function route(e, ek, t, tk, dk, dkeys)
 	end
 end
 
+local function unroute(e, ek, t, tk, dk, dkeys)
+	local fe = getfe(e, ek, t, tk)
+	if fe then
+		local dt = fe[dk]
+		if dt then
+			unindex(e, dt, dkeys)
+		end
+	end
+end
+
 --[[
 Class fields:
 	keys = {'ID', 'NAME'}
@@ -47,20 +67,18 @@ Class fields:
 	detail_key = 'children'
 	foreign_keys = {parent = {'PARENT_ID', 'ID'}}
 Instance fields:
-	master = parents
+	master = master_object_list
 	foreigns = {parent = parents}
 	options = {system_flag = true}
+	transaction = firebird_transaction
 ]]
 objects = oo.class()
 
-function objects:clear()
+function objects:__init(t)
+	local self = oo.rawnew(self, t)
 	if self.keys then
 		self.by = newindex(self.keys)
 	end
-end
-
-function objects:__init(t)
-	local self = oo.rawnew(self, t)
 	if self.master then
 		assert(self.keys[self.lookup_key])
 		assert(self.master[master_key])
@@ -71,7 +89,6 @@ function objects:__init(t)
 			assert(self.foreigns[fk])
 		end
 	end
-	self:clear()
 	return self
 end
 
@@ -91,6 +108,27 @@ function objects:set(e)
 	end
 end
 
+function objects:unset(e)
+	if self.keys then
+		unindex(e, self.by, self.keys)
+	end
+	if self.master then
+		unroute(e, self.lookup_key, self.master, self.master_key,
+					self.detail_key, self.parent_key, self.keys)
+	end
+	if self.foreign_keys then
+		for fk in pairs(self.foreign_keys) do
+			unlink(e, fk)
+		end
+	end
+end
+
+function objects:clear(key, value)
+	for k,v in pairs(self.by[key]) do
+		--
+	end
+end
+
 function objects:exec(q,...)
 	local q = self.queries[q]
 	if type(q) == 'string' then
@@ -104,7 +142,7 @@ function objects:exec(q,...)
 	end
 end
 
-function objects:refresh()
+function objects:load(key, value)
 	self:clear()
 	for st in self.transaction:exec(self.queries.load(self)) do
 		set(st:row())
@@ -118,12 +156,10 @@ function objects:update(e)
 end
 
 local function format(s, e)
-	s = s:gsub('%$([%w_]+)', function(s) return sql.format_name(e[s]) end))
-	s = s:gsub('%%([%w_]+)', function(s) return sql.format_string(e[s]) end))
+	s = s:gsub('%$([%w_]+)', function(s) return sql.format_name(e[s]) end)
+	s = s:gsub('%%([%w_]+)', function(s) return sql.format_string(e[s]) end)
 	return s
 end
-
-local t = {}
 
 do
 	local function query(name)
@@ -138,13 +174,13 @@ do
 				rdb$security_class = ? or ? is null
 			]], name, name
 	end
-	t.security_classes = {
+	security_classes = oo.class({
 		keys = {'NAME'},
 		queries = {
 			load = function(self) return query() end,
 			update = function(self, e) return query(e.NAME) end,
 		}
-	}
+	}, objects)
 end
 
 do
@@ -163,14 +199,14 @@ do
 				and (rdb$role_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
 	end
-	t.roles = {
+	roles = oo.class({
 		keys = {'NAME'},
 		queries = {
 			load = function(self) return query(nil, self.system_flag) end,
 			update = function(self, e) return query(e.NAME, true) end,
 			describe = function(self, e) return format('comment on sequence $NAME is %DESCRIPTION', e) end,
 		}
-	}
+	}, objects)
 end
 
 do
@@ -189,7 +225,7 @@ do
 				and (rdb$generator_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
 	end
-	t.generators = {
+	generators = oo.class({
 		keys = {'ID', 'NAME'},
 		queries = {
 			load		= function(self) return query(nil, self.options.system_flag) end,
@@ -212,9 +248,10 @@ do
 				e.VALUE = value
 			end
 		end,
-	}
+	}, objects)
 end
 
+--[=[
 do
 	local function query(name, system_flag)
 		system_flag = bool2int(system_flag)
@@ -551,7 +588,21 @@ end
 function load(tr, opts)
 	loaders.security_classes()
 
+]=]
 
+schema = oo.class()
+
+function schema.__init(t)
+	local self = oo.rawnew(self, t)
+	self.security_classes = security_classes{options = t.options}
+	return self
 end
 
+function schema:load()
+	self.security_classes:load()
+end
+
+function new()
+	return schema()
+end
 
