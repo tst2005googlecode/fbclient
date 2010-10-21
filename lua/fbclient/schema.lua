@@ -2,133 +2,131 @@
 module(...,require 'fbclient.init')
 
 local oo = require 'loop.simple'
+local sql = require 'fbclient.sql'
 require 'fbclient.blob'
 
-local function bool2int(b)
-	return b and 1 or nil
-end
-
-local function format_sql(sql, e)
-	return (sql:gsub('%%([%w_]+)', e))
-end
-
-local function newe(st,e)
-	local e = e or {}
-	for i,col in ipairs(st.columns) do
-		e[col.column_alias_name] = col:get()
-	end
-	return e
-end
-
-local function load(tr,new,add,...)
-	for st in tr:exec(...) do
-		local e = new(st)
-		add(e)
-	end
-end
-
-local function newindex(...)
+local function newindex(keys)
 	local t = {}
-	for i=1,select('#',...) do
-		local key = select(i,...)
-		t[key] = {}
+	for _,tk in ipairs(keys) do
+		t[tk] = {}
+	end
+	return t
+end
+
+local function index(e, t, keys)
+	for _,k in ipairs(keys) do
+		t[k][e[k]] = e
 	end
 end
 
-local function index(e,t,...)
-	for i=1,select('#',...) do
-		local key = select(i,...)
-		t[key][e[key]] = e
-	end
+local function getfe(e, ek, t, tk)
+	return t[tk][e[ek]]
 end
 
-local function getfe(e, t, lk, fk)
-	return t[fk][e[lk]]
+local function link(e, ek, t, tk, fk)
+	e[fk] = getfe(e, ek, t, tk) or e[fk]
 end
 
-local function link(e, t, key, lk, fk)
-	e[key] = getfe(e, t, lk, fk) or e[key]
-end
-
-local function route(e, mt, lk, mk, dk, drefk,...)
-	local fe = getfe(e, mt, lk, mk)
+local function route(e, ek, t, tk, dk, dkeys)
+	local fe = getfe(e, ek, t, tk)
 	if fe then
 		local dt = fe[dk]
-		if dt then
-			if drefk then
-				e[drefk] = fe
-			end
-			index(e,dt,...)
+		if not dt then
+			dt = newindex(dkeys)
+			fe[dk] = dt
+		end
+		index(e, dt, dkeys)
+	end
+end
+
+--[[
+Class fields:
+	keys = {'ID', 'NAME'}
+	lookup_key = 'PARENT_ID'
+	master_key = 'ID'
+	detail_key = 'children'
+	foreign_keys = {parent = {'PARENT_ID', 'ID'}}
+Instance fields:
+	master = parents
+	foreigns = {parent = parents}
+	options = {system_flag = true}
+]]
+objects = oo.class()
+
+function objects:clear()
+	if self.keys then
+		self.by = newindex(self.keys)
+	end
+end
+
+function objects:__init(t)
+	local self = oo.rawnew(self, t)
+	if self.master then
+		assert(self.keys[self.lookup_key])
+		assert(self.master[master_key])
+		assert(self.detail_key)
+	end
+	if self.foreign_keys then
+		for fk in pairs(self.foreign_keys) do
+			assert(self.foreigns[fk])
+		end
+	end
+	self:clear()
+	return self
+end
+
+function objects:set(e)
+	if self.keys then
+		index(e, self.by, self.keys)
+	end
+	if self.master then
+		route(e, self.lookup_key, self.master, self.master_key,
+					self.detail_key, self.parent_key, self.keys)
+	end
+	if self.foreign_keys then
+		for fk, def in pairs(self.foreign_keys) do
+			local ek, tk = unpack(def)
+			link(e, ek, self.foreigns[fk], tk, fk)
 		end
 	end
 end
 
-local function indexf(t,...)
-	return function(e)
-		index(e,t,...)
+function objects:exec(q,...)
+	local q = self.queries[q]
+	if type(q) == 'string' then
+		for st in self.transaction:exec(format(q,(...))) do
+			set(st:row())
+		end
+	else
+		for st in self.transaction:exec(q(...)) do
+			set(st:row())
+		end
 	end
 end
 
-local function newindexf(...)
-	local t = newindex(...)
-	return t, indexf(t,...)
-end
-
-local function newroute(mt, mk, dk)
-	for k,e in pairs(mt[mk]) do
-		e[dk] = {}
+function objects:refresh()
+	self:clear()
+	for st in self.transaction:exec(self.queries.load(self)) do
+		set(st:row())
 	end
 end
 
-local function routef(mt, lk, mk, dk, drefk,...)
-	return function(e)
-		route(e, mt, lk, mk, dk, drefk,...)
+function objects:update(e)
+	for st in self.transaction:exec(self.queries.update(self, e)) do
+		set(st:row())
 	end
 end
 
-local function newroutef(mt, lk, mk, dk, drefk,...)
-	newroute(mt, mk, dk)
-	return routef(mt, lk, mk, dk, drefk,...)
+local function format(s, e)
+	s = s:gsub('%$([%w_]+)', function(s) return sql.format_name(e[s]) end))
+	s = s:gsub('%%([%w_]+)', function(s) return sql.format_string(e[s]) end))
+	return s
 end
 
-local function indexload(tr, keys,...)
-	local t, set = newindexf(unpack(keys))
-	load(tr, newe, set,...)
-	return t, set
-end
+local t = {}
 
-local function forall(t,f)
-	for k,e in pairs(t) do
-		f(e)
-	end
-end
-
-local function routeload(tr, mt, lk, mk, dk, drefk, dkeys,...)
-	local set = newroutef(mt, mk, dk, drefk, unpack(dkeys))
-	load(tr, newe, set,...)
-	return set
-end
-
-local function indexrouteload(tr, keys, mt, lk, mk, dk, drefk, dkeys,...)
-	local t, index = newindexf(unpack(keys))
-	local route = newroutef(mt, mk, dk, drefk, unpack(dkeys))
-	local function set(e)
-		index(e)
-		route(e)
-	end
-	load(tr, newe, set,...)
-	return t, set
-end
-
-objects = {}
-
-security_classes = setmetatable({}, {__index = objects})
-
-function security_classes:init()
-
-end
-
-security_classes.query(name)
+do
+	local function query(name)
 		return [[
 			select
 				rdb$security_class as name,
@@ -140,25 +138,13 @@ security_classes.query(name)
 				rdb$security_class = ? or ? is null
 			]], name, name
 	end
-
-	local keys = {'NAME'}
-
-	function security_classes:load(tr)
-		self.index, self.set = indexload(tr, keys,...)
-	end
-
-	function security_classes:clear(tr)
-		self.index, self.set = newindexf('NAME')
-	end
-
-	function security_class:update(tr,...)
-		load(tr, newe, self.set, query(...))
-	end
-
-	function security_classes:load(tr)
-		self:clear()
-		self:update(tr)
-	end
+	t.security_classes = {
+		keys = {'NAME'},
+		queries = {
+			load = function(self) return query() end,
+			update = function(self, e) return query(e.NAME) end,
+		}
+	}
 end
 
 do
@@ -177,14 +163,14 @@ do
 				and (rdb$role_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
 	end
-
-	function loaders.roles(tr,t,...)
-		load(tr, newe, indexf(t, 'NAME'), query(...))
-	end
-end
-
-function queries.roles.describe(e)
-	return format_sql("comment on sequence %NAME is '%DESCRIPTION'", e)
+	t.roles = {
+		keys = {'NAME'},
+		queries = {
+			load = function(self) return query(nil, self.system_flag) end,
+			update = function(self, e) return query(e.NAME, true) end,
+			describe = function(self, e) return format('comment on sequence $NAME is %DESCRIPTION', e) end,
+		}
+	}
 end
 
 do
@@ -203,26 +189,31 @@ do
 				and (rdb$generator_name = ? or ? is null)
 			]], system_flag, system_flag, name, name
 	end
-
-	function loaders.generators(tr, t, name,...)
-		load(tr, newe, indexf(t, 'ID', 'NAME'), query(name,...))
-		if name then
-			for st, value in tr:exec(format_sql("select gen_id(%NAME,0) from rdb$database", name)) do
-				t.by_NAME[name].VALUE = value
-			end
-		else
-			for name, e in pairs(t.by_NAME) do
-				for st, value in tr:exec(format_sql("select gen_id(%NAME,0) from rdb$database", name)) do
+	t.generators = {
+		keys = {'ID', 'NAME'},
+		queries = {
+			load		= function(self) return query(nil, self.options.system_flag) end,
+			update		= function(self, e) return query(e.NAME, true) end,
+			describe	= 'comment on generator $NAME is %DESCRIPTION',
+			create		= 'create sequence $NAME", e)',
+			alter		= 'alter sequence $NAME restart with %VALUE',
+		},
+		refresh = function(self)
+			objects.refersh(self)
+			for name, e in pairs(self.by.NAME) do
+				for st, value in self.transaction:exec(format('select gen_id($NAME,0) from rdb$database', name)) do
 					e.VALUE = value
 				end
 			end
-		end
-	end
+		end,
+		load = function(self)
+			objects.load(self, e)
+			for st, value in self.transaction:exec(format('select gen_id($NAME,0) from rdb$database', e.NAME)) do
+				e.VALUE = value
+			end
+		end,
+	}
 end
-
-function queries.generators.create(e) return format_sql("create sequence %NAME", e) end
-function queries.generators.describe(e) return format_sql("comment on sequence %NAME% is '%DESCRIPTION'", e) end
-function queries.generators.alter(e) return format_sql("alter sequence %NAME restart with %VALUE", e) end
 
 do
 	local function query(name, system_flag)
