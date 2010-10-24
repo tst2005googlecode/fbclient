@@ -6,14 +6,8 @@
 module(...,require 'fbclient.init')
 
 local oo = require 'loop.simple'
-local sql = require 'fbclient.sql'
+local sql_dataset = require 'fbclient.sql_dataset'
 require 'fbclient.blob'
-
-local function format(s, e)
-	s = s:gsub('%$([%w_]+)', function(s) return sql.format_name(e[s]) end)
-	s = s:gsub('%%([%w_]+)', function(s) return sql.format_string(e[s]) end)
-	return s
-end
 
 do
 	local function query(name)
@@ -34,7 +28,7 @@ do
 			load = function(self) return query() end,
 			update = function(self, e) return query(e.NAME) end,
 		}
-	}, objects)
+	}, sql_dataset)
 end
 
 do
