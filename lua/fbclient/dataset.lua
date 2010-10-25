@@ -7,7 +7,7 @@
 		ds = DS{ ... instance fields ... }
 	Class fields:
 		Indexing:
-			keys = {{KEY1,...},...}
+			keys = {KEY,...}
 		Master-detail:
 			lookup_key = LOOKUP_KEY
 			master_key = MASTER_KEY
@@ -35,25 +35,29 @@ local index = require 'fbclient.index'
 
 local dataset = oo.class()
 
+local toarray(k)
+	return type(k) == 'table' and k or {k}
+end
+
 function dataset:__init(t)
 	local self = oo.rawnew(self, t or {})
+
 	for i,k in ipairs(self.keys) do
-		self.indices[index{keys = k}] = true
+		self.indices[index{keys = toarray(k)}] = true
 	end
 
-	assert(self.keys or self.master)
-	if self.keys then
-		self.by = newindex(self.keys)
-	end
-	if self.master then
-		assert(self.master.by[self.master_key])
-		assert(self.detail_key)
-	end
 	if self.foreigns then
 		for fk in pairs(self.foreigns) do
 			assert(self.foreign_keys[fk])
 		end
 	end
+
+	assert(self.keys or self.master)
+	if self.master then
+		assert(self.master.by[self.master_key])
+		assert(self.detail_key)
+	end
+
 	return self
 end
 
@@ -64,8 +68,40 @@ function dataset:index(e)
 end
 
 function dataset:unindex(e)
+	for idx in pairs(self.indices) do
+		idx:remove(e)
+	end
+end
 
-		unindex(e, self.by, self.keys)
+function dataset:lookup(e, key, lookup_key)
+	return self.indices
+end
+
+function dataset:link(e, fk)
+	if not fk then
+		if self.foreigns then
+			for fk in pairs(self.foreigns) do
+				self:link(e, fk)
+			end
+		end
+	else
+		local t = self.foreigns[fk]
+		local def = self.foreign_keys[fk]
+		if t then
+			local ek, tk = unpack(def)
+			e[fk] = tk:lookup(e, ek)
+		end
+	end
+end
+
+function dataset:unlink(e, fk)
+	if not fk then
+		for kf in pairs(self.foreign_keys) do
+			self:unlink(e, fk)
+		end
+	else
+		unlink(e, fk)
+	end
 end
 
 function dataset:route(e)
@@ -83,33 +119,6 @@ function dataset:unroute(e)
 		if fe then
 			unroute(e, fe, self.detail_key, self.detail_index_keys or self.keys)
 		end
-	end
-end
-
-function dataset:link(e, fk)
-	if not fk then
-		if self.foreigns then
-			for fk in pairs(self.foreigns) do
-				self:link(e, fk)
-			end
-		end
-	else
-		local t = self.foreigns[fk]
-		local def = self.foreign_keys[fk]
-		if t then
-			local ek, tk = unpack(def)
-			link(e, ek, t.by, tk, fk)
-		end
-	end
-end
-
-function dataset:unlink(e, fk)
-	if not fk then
-		for kf in pairs(self.foreign_keys) do
-			self:unlink(e, fk)
-		end
-	else
-		unlink(e, fk)
 	end
 end
 
