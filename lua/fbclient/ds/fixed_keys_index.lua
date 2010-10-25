@@ -1,9 +1,5 @@
 --[[
 	Simple class to index table elements by one or more keys in O(n)
-	Alternative implementation using just Lua hashes.
-
-	Limtations:
-	Key values must have unique, normalized string representations via tostring().
 
 	idx = index{key1,...}
 	idx:index(e)
@@ -17,14 +13,10 @@ local oo = require 'loop.base'
 
 index = oo.class()
 
-local function hash(e, keys)
-	local t = {}
-	for i,k in ipairs(keys) do
-		local v = tostring(e[k])
-		t[i] = ('%x'):format(#v)
-		t[#keys+i] = v
-	end
-	return table.concat(t,' ')
+local NAN = {}
+
+local function tokey(k)
+	return k == k and k or NAN
 end
 
 function index:__init(t)
@@ -40,26 +32,59 @@ function index:init(keys)
 end
 
 function index:index(e)
-	self.elements[hash(e, self.keys)] = e
+	local t,n = self.elements, #self.keys
+	for i=1,n do
+		local k = e[tokey(self.keys[i])]
+		t[k] = i == n and e or t[k] or {}
+		t = t[k]
+	end
 end
 
 function index:lookup(e, ekeys)
-	return self.elements[hash(e, ekeys or self.keys)]
+	ekeys = ekeys or self.keys
+	assert(#ekeys == #self.keys)
+	local t = self.elements
+	for i=1,#ekeys do
+		t = t[tokey(e[ekeys[i]])]
+		if not t then return end
+	end
+	return t --the last t is the element itself
 end
 
 function index:remove(e)
-	local s = hash(e, self.keys)
-	if s then
-		self.elements[s] = nil
+	local t = self.elements
+	local cleart, cleark
+	for i=1,#self.keys do
+		local k = e[tokey(self.keys[i])]
+		local tt = t[k]
+		if not tt then return end
+		if i < #self.keys and next(tt,next(tt)) then
+			cleart, cleark = nil,nil
+		elseif not cleart then
+			cleart, cleark = t,k
+		end
+		t = tt
+	end
+	cleart[cleark] = nil
+end
+
+local function walk(self,t,i,n)
+	t = t or self.elements
+	i = i or 1
+	n = n or #self.keys
+	if i < n then
+		for k,t in pairs(t) do
+			walk(self, t, i+1, n)
+		end
+	else
+		for k,e in pairs(t) do
+			coroutine.yield(e)
+		end
 	end
 end
 
 function index:list()
-	local k,v
-	return function()
-		k,v = next(self.elements,k)
-		return v
-	end
+	return coroutine.wrap(walk), self
 end
 
 if __UNITTESTING then
@@ -93,9 +118,14 @@ if __UNITTESTING then
 	idx:remove(idx:lookup({tt = 't1', ff = 'f1'}, {'tt','ff'}))
 	assert(idx:lookup({tt = 't1', ff = 'f1'}, {'tt','ff'}) == nil)
 	assert(idx:lookup({tt = 't1', ff = 'f2'}, {'tt','ff'}) == act[2])
+	assert(idx.elements.t1.f1 == nil)
 
 	idx:remove(idx:lookup({tt = 't1', ff = 'f2'}, {'tt','ff'}))
 	assert(idx:lookup({tt = 't1', ff = 'f2'}, {'tt','ff'}) == nil)
+	assert(idx.elements.t1 == nil)
+	assert(idx.elements.t2.f1 == act[3])
+	assert(idx.elements.t2.f2 == act[4])
+
 end
 
 return index
