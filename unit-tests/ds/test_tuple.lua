@@ -1,5 +1,7 @@
 
-require 'tuple'.import()
+package.path = '../../lua/?.lua;'..package.path
+
+local tuple = require 'fbclient.ds.tuple'
 
 t1 = tuple(1,0/0,3)
 t2 = tuple(1,0/0,3)
@@ -17,4 +19,11 @@ assert(t3 ~= t4, t3.n..'\t'..t4.n)
 assert(t5 ~= t6)
 assert(t5 == tuple())
 assert(t6 == tuple(nil))
+
+print(t1)
+print(t2)
+print(t3)
+print(t4)
+print(t5)
+print(t6)
 

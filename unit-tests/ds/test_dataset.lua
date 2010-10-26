@@ -1,4 +1,6 @@
 
+package.path = '../../lua/?.lua;'..package.path
+
 local dataset = require 'fbclient.ds.dataset'
 
 local oo = require 'loop.simple'

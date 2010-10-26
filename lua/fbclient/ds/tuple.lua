@@ -3,28 +3,25 @@
 
 	meta -> metatable for all tuples
 
-	new(...) -> new tuple
-	wrap(t, [n]) -> tuple(t)
+	new(...) -> tuple
+	wrap(t, [n]) -> tuple
 
-	t1 == t2 test, where NaN == NaN
-
-	Usage:
-		require 'tuple'.import()
-		t = tuple(1,2,3)
-	or
-		local tuple = require 'tuple'
-		t = tuple.new(1,2,3)
+	__eq
+	__tostring
 
 	TODO: more operators if useful
 
 ]]
 
-local meta = {__type = 'tuple'}
+local setmetatable, select, table, tostring =
+	  setmetatable, select, table, tostring
 
-local wrap
+module(...)
 
-local function new(...)
-	return wrap({..., n=select('#',...)})
+meta = {__type = 'tuple'}
+
+function new(...)
+	return wrap({n=select('#',...),...})
 end
 
 function wrap(t, n)
@@ -37,7 +34,7 @@ local function naneq(x,y)
 	return x == y or (x ~= x and y ~= y)
 end
 
-local function eq(self, other)
+function meta:__eq(other)
 	if self.n ~= other.n then
 		return false
 	end
@@ -49,21 +46,13 @@ local function eq(self, other)
 	return true
 end
 
-meta.__eq = eq
-
-local M
-
-local function import(env)
-	env = env or _G
-	env.tuple = setmetatable({}, {__index = M, __call = function(t,...) return new(...) end})
+function meta:__tostring()
+	local t = {}
+	for i=1,self.n do
+		t[i] = tostring(self[i])
+	end
+	return '('..table.concat(t, ', ', 1, self.n)..')'
 end
 
-M = {
-	meta = meta,
-	new = new,
-	wrap = wrap,
-	import = import,
-}
-
-return M
+setmetatable(_M, {__call = function(t,...) return new(...) end})
 

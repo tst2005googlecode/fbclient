@@ -1,16 +1,26 @@
 --[[
-	Indexing by tuple keys (hash tree implementation)
-	Keys with NaNs and nils allowed, provided you set t.n or pass n as last parameter.
+	Indexing values by tuple keys, implemented as a search tree
+	Any array works as a key, even arrays with holes, provided keys.n is set
+	or n is passed as parameter to get() and set().
+	Interface is the same as for Lua tables.
 
-	new() -> {}
-	wrap(t) -> t
+	Procedural interface:
+		set(t, keys, e, [n])
+		get(t, keys, [n]) -> e
 
-	index(t, keys, e, [n])
-	lookup(t, keys, [n]) -> e
-	remove(t, keys, [n]) -> e
+		pairs(t) -> iterator -> keys, e
+		values(t) -> iterator -> e
 
-	elements(t) -> iterator -> e
-	pairs(t) -> iterator -> keys, e
+	Objectual interface:
+		() -> new()
+		new() -> idx		use for both instantiation and derivation
+		idx() -> new()
+
+		idx[keys] = e		idx:set(keys, e, [n])
+		idx[keys] -> e		idx:get(keys, [n]) -> e
+
+		idx:pairs() -> iterator -> keys, e
+		idx:values() -> iterator -> e
 
 ]]
 
@@ -25,9 +35,9 @@ local function const(name)
 	return setmetatable({}, {__tostring = function() return name end})
 end
 
-local NIL = const('NIL')
-local NAN = const('NAN')
-local ELEM = const('ELEM')
+local NIL = const'NIL'
+local NAN = const'NAN'
+local ELEM = const'ELEM'
 
 local function tokey(k)
 	return (k == nil and NIL) or (k ~= k and NAN) or k
@@ -37,12 +47,8 @@ local function fromkey(k)
 	return (k == NAN and 0/0) or (k ~= NIL and k) or nil
 end
 
-function new() return {} end
-function wrap(t) return t end
-
-function index(t, keys, e, n)
+local function add(t, keys, e, n)
 	n = n or keys.n or #keys
-	e = e ~= nil and e or true
 	for i=1,n do
 		local k = tokey(keys[i])
 		t[k] = t[k] or {}
@@ -51,16 +57,7 @@ function index(t, keys, e, n)
 	t[ELEM] = e
 end
 
-function lookup(t, keys, n)
-	n = n or keys.n or #keys
-	for i=1,n do
-		t = t[tokey(keys[i])]
-		if not t then return end
-	end
-	return t[ELEM]
-end
-
-function remove(t, keys, n)
+local function remove(t, keys, n)
 	n = n or keys.n or #keys
 	local cleart, cleark
 	for i=1,n do
@@ -77,6 +74,24 @@ function remove(t, keys, n)
 	cleart[cleark] = nil
 end
 
+function set(t, keys, e, n)
+	if e ~= nil then
+		add(t, keys, e, n)
+	else
+		remove(t, keys, n)
+	end
+end
+
+function get(t, keys, n)
+	print(t,keys,n)
+	n = n or keys.n or #keys
+	for i=1,n do
+		t = t[tokey(keys[i])]
+		if not t then return end
+	end
+	return t[ELEM]
+end
+
 do
 	local function walk(t)
 		for k,t in pairs(t) do
@@ -88,7 +103,7 @@ do
 		end
 	end
 
-	function elements(t)
+	function values(t)
 		return coroutine.wrap(walk), t
 	end
 end
@@ -109,4 +124,16 @@ do
 		return coroutine.wrap(walk), t
 	end
 end
+
+function new()
+	return setmetatable({}, meta)
+end
+
+meta = {
+	__call = new,
+	__index = get,
+	__newindex = set,
+}
+
+setmetatable(_M, meta)
 
