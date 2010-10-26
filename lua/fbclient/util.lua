@@ -182,7 +182,7 @@ local function dump_recursive(v,k,i,trace,level)
 	i = i or 0
 	local indent = 2
 	if level and i > level then return end
-	if applicable(v,'__pairs') and not applicable(v,'__tostring') then
+	if applicable(v,'__pairs') and not applicable(v, '__tostring') then
 		if trace[v] then
 			print((' '):rep(i*indent)..(k and '['..tostring(k)..'] => ' or '')..'<traced>')
 		else
@@ -194,7 +194,7 @@ local function dump_recursive(v,k,i,trace,level)
 			end
 		end
 	else
-		print((' '):rep(i*indent)..(k and '['..k..'] => ' or '')..tostring(v))
+		print((' '):rep(i*indent)..(k and '['..tostring(k)..'] => ' or '')..tostring(v))
 	end
 end
 

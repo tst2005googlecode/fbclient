@@ -10,7 +10,8 @@ t4 = tuple(2,nil)
 t5 = tuple()
 t6 = tuple(nil)
 
-assert(t1 == t2)
+assert(t1 ~= t2) --no matter how many times you compute it, 0/0 always ends up different :)
+assert(t1 == t1) --Lua compares pointers first
 assert(t1.n == 3, t1.n)
 assert(t2.n == 3, t1.n)
 assert(t3.n == 2, t3.n)

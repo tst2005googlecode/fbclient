@@ -1,37 +1,27 @@
 --[[
-	Trivial tuple implementation
+	Trivial n-tuple implementation
+	Tuples containing NaN are only equal to themselves (the exact same instance).
 
-	meta -> metatable for all tuples
-
-	new(...) -> tuple
+	(...) -> tuple
 	wrap(t, [n]) -> tuple
-
-	__eq
-	__tostring
-
-	TODO: more operators if useful
 
 ]]
 
 local setmetatable, select, table, tostring =
 	  setmetatable, select, table, tostring
 
-module(...)
+setfenv(1, {})
 
-meta = {__type = 'tuple'}
+local meta = {__type = 'tuple'}
 
-function new(...)
-	return wrap({n=select('#',...),...})
-end
-
-function wrap(t, n)
+local function wrap(t, n)
 	t.n = n or t.n or #t
 	setmetatable(t, meta)
 	return t
 end
 
-local function naneq(x,y)
-	return x == y or (x ~= x and y ~= y)
+local function new(...)
+	return wrap({n=select('#',...),...})
 end
 
 function meta:__eq(other)
@@ -39,7 +29,7 @@ function meta:__eq(other)
 		return false
 	end
 	for i=1,self.n do
-		if not naneq(self[i], other[i]) then
+		if self[i] ~= other[i] then
 			return false
 		end
 	end
@@ -54,5 +44,11 @@ function meta:__tostring()
 	return '('..table.concat(t, ', ', 1, self.n)..')'
 end
 
-setmetatable(_M, {__call = function(t,...) return new(...) end})
+local M = {
+	meta = meta,
+	wrap = wrap,
+	new = new,
+}
+
+return setmetatable(M, {__call = function(_,...) return new(...) end})
 
