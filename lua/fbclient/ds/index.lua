@@ -9,8 +9,6 @@
 
 		values(t) -> iterator -> e
 
-		t[k1][k2]...[kn][E] -> e
-
 	Objectual interface:
 		([t]) -> idx
 		wrap(t) -> idx
@@ -32,9 +30,9 @@ local function const(name)
 	return setmetatable({}, {__tostring = function() return name end})
 end
 
-NIL = const'NIL'
-NAN = const'NAN'
-E = const'E'
+local NIL = const'NIL'
+local NAN = const'NAN'
+local E = const'E'
 
 local function tokey(k)
 	return (k == nil and NIL) or (k ~= k and NAN) or k
@@ -115,13 +113,13 @@ end
 
 --objectual interface
 
-local methods = {}
-function methods:set(keys, e, n) set(self.index, keys, e, n) end
-function methods:get(keys, n) return get(self.index, keys, n) end
-function methods:values() return values(self.index) end
+local class = {}
+function class:set(keys, e, n) set(self.index, keys, e, n) end
+function class:get(keys, n) return get(self.index, keys, n) end
+function class:values() return values(self.index) end
 
 local meta = {__type = 'index'}
-function meta:__index(k) return methods[k] or get(self.index, k) end
+function meta:__index(k) return class[k] or get(self.index, k) end
 function meta:__newindex(k, v) return set(self.index, k, v) end
 
 local function wrap(t)
@@ -130,7 +128,7 @@ end
 
 local M = {
 	meta = meta,
-	methods = methods,
+	class = class,
 	set = set,
 	get = get,
 	values = values,

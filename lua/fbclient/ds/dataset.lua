@@ -31,19 +31,15 @@
 ]]
 
 local oo = require 'loop.base'
-local index = require 'fbclient.index'
+local rowindex = require 'fbclient.ds.rowindex'
 
 local dataset = oo.class()
-
-local toarray(k)
-	return type(k) == 'table' and k or {k}
-end
 
 function dataset:__init(t)
 	local self = oo.rawnew(self, t or {})
 
 	for i,k in ipairs(self.keys) do
-		self.indices[index{keys = toarray(k)}] = true
+		self.indices[rowindex(unpack(k,1,k.n or #k))] = true
 	end
 
 	if self.foreigns then
