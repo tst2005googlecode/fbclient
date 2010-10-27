@@ -1,7 +1,7 @@
 --[[
-	Indexing values by tuple keys, implemented as a hash tree
-	Any array works as a key, even arrays with holes, provided keys.n is set
-	or n is passed as parameter to get() and set().
+	Indexing values by multiple keys, implemented as a hash tree
+	Any array works as a keyset, even arrays with holes, provided keys.n is set
+	or n is passed to get() and set().
 
 	Procedural interface:
 		set(t, keys, e, [n])
@@ -12,7 +12,7 @@
 	Objectual interface:
 		([t]) -> idx
 		wrap(t) -> idx
-		idx.index -> t
+		idx.t -> t
 
 		idx[keys] = e			idx:set(keys, e, [n])
 		idx[keys] -> e			idx:get(keys, [n]) -> e
@@ -114,17 +114,15 @@ end
 --objectual interface
 
 local class = {}
-function class:set(keys, e, n) set(self.index, keys, e, n) end
-function class:get(keys, n) return get(self.index, keys, n) end
-function class:values() return values(self.index) end
+function class:set(keys, e, n) set(self.data, keys, e, n) end
+function class:get(keys, n) return get(self.data, keys, n) end
+function class:values() return values(self.data) end
 
 local meta = {__type = 'index'}
-function meta:__index(k) return class[k] or get(self.index, k) end
-function meta:__newindex(k, v) return set(self.index, k, v) end
+function meta:__index(k) return class[k] or get(self.data, k) end
+function meta:__newindex(k, v) return set(self.data, k, v) end
 
-local function wrap(t)
-	return setmetatable({index = t}, meta)
-end
+local function wrap(t) return setmetatable({data = t}, meta) end
 
 local M = {
 	meta = meta,

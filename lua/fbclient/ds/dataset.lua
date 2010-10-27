@@ -7,23 +7,23 @@
 		ds = DS{ ... instance fields ... }
 	Class fields:
 		Indexing:
-			keys = {KEY,...}
+			keys = {KEY...}
 		Master-detail:
-			lookup_key = LOOKUP_KEY
-			master_key = MASTER_KEY
-			detail_key = DETAIL_KEY
+			lookup_key = KEY
+			master_key = KEY
+			detail_key = key_name
 			detail_index_keys = {DETAIL_INDEX_KEY,...}
 		Foreign-keys:
-			foreign_keys = {FOREIGN_KEY = {LOOKUP_KEY, INDEX_KEY},...}
+			foreign_keys = {key_name = {LOOKUP_KEY, INDEX_KEY},...}
 	Instance fields:
 		Master-detail:
 			master = MASTER_DATASET
 		Foreign-keys:
-			foreigns = {FOREIGN_KEY = FOREIGN_DATASET}
+			foreigns = {key_name = FOREIGN_DATASET}
 	Methods:
 		ds:set(row)
 		ds:unset(row)
-		ds:list() -> iterator -> row
+		ds:rows() -> iterator -> row
 		ds:clear(key)
 		ds:setmaster(master_dataset)
 		ds:setforeign(key, foreign_dataset)
@@ -35,23 +35,48 @@ local rowindex = require 'fbclient.ds.rowindex'
 
 local dataset = oo.class()
 
-function dataset:__init(t)
-	local self = oo.rawnew(self, t or {})
-
-	for i,k in ipairs(self.keys) do
-		self.indices[rowindex(unpack(k,1,k.n or #k))] = true
+local function unpack_keys(keys)
+	if type(keys) == 'table' then
+		return unpack(keys)
+	else
+		return keys
 	end
+end
 
-	if self.foreigns then
-		for fk in pairs(self.foreigns) do
-			assert(self.foreign_keys[fk])
+local function equal_keys(self, other)
+	if type(self) == 'table' and type(other) == 'table' then
+		if #self ~= #other then return false end
+		for i=1,#self do
+			if self[i] ~= other[i] then
+				return false
+			end
+		end
+		return true
+	else
+		return self == other
+	end
+end
+
+function dataset:find_index(keys)
+	for idx in pairs(self.indices) do
+		if equal_keys(idx.keys, keys) then
+			return idx
 		end
 	end
+end
 
-	assert(self.keys or self.master)
-	if self.master then
-		assert(self.master.by[self.master_key])
-		assert(self.detail_key)
+function dataset:__init(t)
+	local self = oo.rawnew(self, t or {})
+	self.keys = self.keys or {}
+	self.foreigns = self.foreigns or {}
+
+	self.indices = {}
+	for i,keys in ipairs(self.keys) do
+		self.indices[rowindex(unpack_keys(keys))] = true
+	end
+
+	for fk in pairs(self.foreigns) do
+		assert(self.foreign_keys[fk])
 	end
 
 	return self
@@ -59,7 +84,7 @@ end
 
 function dataset:index(e)
 	for idx in pairs(self.indices) do
-		idx:index(e)
+		idx:set(e)
 	end
 end
 
@@ -69,23 +94,22 @@ function dataset:unindex(e)
 	end
 end
 
-function dataset:lookup(e, key, lookup_key)
-	return self.indices
+function dataset:lookup(e, keys, lookup_keys)
+	local idx = assert(self:find_index(keys))
+	return idx:lookup(e, unpack_keys(lookup_keys))
 end
 
 function dataset:link(e, fk)
 	if not fk then
-		if self.foreigns then
-			for fk in pairs(self.foreigns) do
-				self:link(e, fk)
-			end
+		for fk in pairs(self.foreigns) do
+			self:link(e, fk)
 		end
 	else
-		local t = self.foreigns[fk]
+		local ds = self.foreigns[fk]
 		local def = self.foreign_keys[fk]
-		if t then
+		if ds then
 			local ek, tk = unpack(def)
-			e[fk] = tk:lookup(e, ek)
+			e[fk] = ds:lookup(e, ek)
 		end
 	end
 end
@@ -130,7 +154,7 @@ function dataset:unset(e)
 	self:unindex(e)
 end
 
-function dataset:list()
+function dataset:rows()
 	if self.keys then
 		local t = self.by[next(self.keys)] --any key is as good as any
 		local k,v
@@ -186,58 +210,4 @@ function dataset:clear(key, value)
 		end
 	end
 end
-
-if true then
-	local oo = require 'loop.simple'
-	local dump = require('util').dump
-	FDS = oo.class({
-		keys = {id = true, name = true},
-	}, dataset)
-	MDS = oo.class({
-		keys = {id = true, name = true},
-		foreign_keys = {f = {'f_id','id'}}
-	}, dataset)
-	DDS = oo.class({
-		keys = {id = true, name = true},
-		lookup_key = 'parent_name',
-		master_key = 'name',
-		detail_key = 'detail',
-		detail_index_keys = {id = true, name = true},
-	}, dataset)
-
-	flist = FDS()
-	mlist = MDS()
-	dlist = DDS()
-
-	mlist:set{id=1,name='X',f_id=2}
-	mlist:set{id=2,name='Y',f_id=1}
-	assert(mlist.by.id[1].name == 'X')
-	assert(mlist.by.id[2].name == 'Y')
-	assert(mlist.by.name.X.id == 1)
-	assert(mlist.by.name.Y.id == 2)
-	flist:set{id=1,name='A'}
-	flist:set{id=2,name='B'}
-	assert(mlist.by.id[1].f == nil)
-	mlist:setforeign('f', flist)
-	assert(mlist.by.id[1].f.id == 2)
-	assert(mlist.by.id[2].f.id == 1)
-	dlist:set{id=1,name='a',parent_name='X'}
-	dlist:set{id=2,name='b',parent_name='X'}
-	dlist:set{id=3,name='c',parent_name='Y'}
-	dlist:set{id=4,name='d',parent_name='Y'}
-	dlist:setmaster(mlist)
-	assert(mlist.by.name.X.detail.name.a.id == 1)
-	assert(mlist.by.name.X.detail.name.b.id == 2)
-	assert(mlist.by.name.Y.detail.name.c.id == 3)
-	assert(mlist.by.name.Y.detail.name.d.id == 4)
-	dump(mlist)
-	mlist:setforeign('f', nil)
-	assert(mlist.by.id[1].f == nil)
-	dlist:setmaster(nil)
-	assert(next(mlist.by.name.X.detail.name) == nil)
-	assert(dlist.by.name.d.id == 4)
-end
-
-return dataset
-
 

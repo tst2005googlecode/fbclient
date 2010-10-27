@@ -35,15 +35,23 @@ end
 
 for row in idx1:values() do
 	print(row)
-	assert(idx1:get(row) == row)
-	assert(idx2:get(row) == row)
+	assert(idx1:lookup(row) == row)
+	assert(idx2:lookup(row) == row)
 end
 
 print()
 
 for row in idx2:values() do
 	print(row)
-	assert(idx1:get(row) == row)
-	assert(idx2:get(row) == row)
+	assert(idx1:lookup(row) == row)
+	assert(idx2:lookup(row) == row)
 end
+
+for i,row in ipairs(rows) do
+	idx1:remove(row)
+	idx2:remove(row)
+end
+
+for e in idx1:values() do assert(false) end
+for e in idx2:values() do assert(false) end
 
