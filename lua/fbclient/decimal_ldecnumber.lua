@@ -20,7 +20,7 @@
 
 ]=]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local decNumber = require 'ldecNumber'
 local xsqlvar_class = require('fbclient.xsqlvar').xsqlvar_class

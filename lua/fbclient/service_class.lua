@@ -77,7 +77,7 @@
 
 ]=]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local binding = require 'fbclient.binding'
 local svapi = require 'fbclient.status_vector'

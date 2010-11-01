@@ -25,7 +25,7 @@
 
 ]]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local binding = require 'fbclient.binding'
 
@@ -108,7 +108,7 @@ function full_status(fbapi, sv)
 	if not ok then
 		local errcodes = package.loaded['fbclient.error_codes']
 		if errcodes then
-			local err_name = errcodes.code_lookup[err]
+			local err_name = errcodes[err]
 			if err_name then
 				err = err_name..' ['..err..']'
 			end

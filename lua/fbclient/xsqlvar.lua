@@ -62,6 +62,7 @@
 	any								null				setnull()					xsqlvar.lua
 	is_null							any not null		setnotnull()				xsqlvar.lua
 	time,date,timestamp				time_t				settime(t)					xsqlvar.lua
+	all numerics					boolean				setnumber(b and 1 or 0)		xsqlvar.lua
 	int16,int32,int64, scale = 0	number				setnumber(n)				xsqlvar.lua
 	int16,int32,int64, scale >= 0	parts_t				setparts(parts_t)			xsqlvar.lua
 	float,double					number				setnumber(n)				xsqlvar.lua
@@ -96,7 +97,7 @@
 
 ]=]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local datetime = require 'fbclient.datetime'
 
@@ -532,6 +533,18 @@ xsqlvar_class:add_set_handler(
 			else
 				self:setnotnull()
 			end
+			return true
+		end
+	end
+)
+
+xsqlvar_class:add_set_handler(
+	function(self,p,typ,opt) --boolean for all numeric types: true -> 1, false -> 0
+		if type(p) == 'boolean' and
+			(typ == 'float' or typ == 'double'
+			or typ == 'int16' or typ == 'int32' or typ == 'int64')
+		then
+			self:setnumber(p and 1 or 0)
 			return true
 		end
 	end

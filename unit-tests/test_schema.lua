@@ -22,27 +22,37 @@ function test_everything(env)
 	traceall('start')
 	trace('start')
 
-	local sch = require 'fbclient.schema'
+	local schema = require 'fbclient.schema'
 	local dump = require('fbclient.util').dump
 
 	trace('loadlib')
 
 	local tr = env:create_test_db():start_transaction_ex()
-	local schema = sch.new()
-
-	trace('attach')
-
-	schema:load(tr, {
+	local options = {
+		system_flag = true,
+		source_code = true,
+		table_fields = true,
 		security = true,
 		collations = true,
 		function_args = true,
-		table_fields = true,
 		procedure_args = true,
-		source_code = true,
-		system_flag = true,
-	})
+	}
+	local sc1 = schema{options = options}
+	local sc2 = schema{options = options}
 
-	dump(schema)
+	trace('attach')
+
+	sc1.domains:load(tr)
+	sc1.tables:load(tr, 'RDB$RELATIONS')
+	sc1.tables:load(tr, 'RDB$INDICES')
+	sc2.domains:load(tr)
+	sc2.tables:load(tr, 'RDB$RELATIONS')
+	sc2.tables:load(tr, 'RDB$DATABASE')
+	sc2.tables.elements['RDB$RELATIONS'].fields.NAME = 'NEW_NAME'
+	dump(sc1,sc2)
+	for action, old_e, new_e in sc2:compare(sc1) do
+		print(action, old_e, new_e)
+	end
 
 	trace('load all')
 
@@ -53,6 +63,6 @@ function test_everything(env)
 	--profiler.end()
 end
 
-local comb = {{lib='fbembed',ver='2.5.0'}}
+local comb = {{lib='fbclient',ver='2.5.0',server_ver='2.5.0'}}
 config.run(test_everything,comb,nil,...)
 

@@ -2,33 +2,39 @@
 	SQL-based Dataset
 
 	Class fields:
-		queries = {name = query_template | function(self, row) -> s }
+		queries = {name = query_template | function(self, row) -> s, params... }
 	Instance fields:
 		options = {
 			system_flag = true
 		}
 		transaction = firebird_transaction
-
-	Usage:
-		sqlds = require 'fbclient.sql_dataset'
-		DS = oo.class({ ... class fields ... }, sqlds)
-		ds = DS{ ... instance fields ... }
-
+	Methods:
+		ds:query()
 		ds:load()
 		ds:exec(query_name, params...)
 
 ]]
 
-module(...,'fbclient.init')
+local type =
+	  type
 
 local oo = require 'loop.simple'
 local dataset = require 'fbclient.dataset'
+local sql = require 'fbclient.sql'
 
-local sql_dataset = oo.class({}, dataset)
+module(...)
+oo.class(_M, dataset)
 
-_M = sql_dataset
+function query(self, query_name, row)
+	local query = self.queries[query_name]
+	if type(query) == 'string' then
+		return sql.parse_template(query, row)
+	else
+		return query(self, row)
+	end
+end
 
-function exec(self, q,...)
+function exec(self,...)
 	local q = self.queries[q]
 	if type(q) == 'string' then
 		for st in self.transaction:exec(format(q,(...))) do

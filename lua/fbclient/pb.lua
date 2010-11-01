@@ -8,7 +8,7 @@
 
 ]]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 -- encode_*() functions used for encoding individual PB options in encoders table passed to encode().
 

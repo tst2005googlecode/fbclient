@@ -9,11 +9,16 @@
 
 ]]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
+
+local sql_keywords = require 'fbclient.sql_keywords'
+local lpeg = require 'lpeg'
 
 --quote an object name
-function format_name(s)
-	return s
+function format_name(s, compatibility_mode)
+	s = s:match('^%"([%u_]-)"$') or s --de-quote all-uppercase-and-no-spaces names
+	if compatibility_mode == 'all' then
+	return fb_keywords[s]
 end
 
 --quote a string constant
@@ -30,9 +35,14 @@ end
 --replace :NAME and %NAME placeholders from a text with values from a table or the result of a function
 --:: and %% are replaced with : and % respectively
 function parse_template(s,t)
-	if type(t) == 'table'
-	s = s:gsub('%:([%w_]+)', function(s) return format_name(t(s)) end)
-	s = s:gsub('%%([%w_]+)', function(s) return format_string(t(s)) end)
+	local f = t
+	if type(t) == 'table' then
+		function f(s)
+			return t[s]
+		end
+	end
+	s = s:gsub('%:("?[%w_%.]+"?)', function(s) return format_name(f(s)) end)
+	s = s:gsub('%%("?[%w_%.]+"?)', function(s) return format_string(f(s)) end)
 	return s
 end
 

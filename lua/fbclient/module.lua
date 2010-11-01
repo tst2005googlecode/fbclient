@@ -2,7 +2,7 @@
 	Since you opened this file, you might want to know how modules work in fbclient.
 	A typical fbclient module starts with the line:
 
-		module(...,require'fbclient.init')
+		module(...,require'fbclient.module')
 
 	This does two things:
 		1) loads this module if it's not loaded already (so the initialization code only happens once)

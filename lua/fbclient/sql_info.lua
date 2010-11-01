@@ -12,7 +12,7 @@
 
 ]]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local info = require 'fbclient.info'
 

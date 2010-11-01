@@ -44,7 +44,7 @@
 
 ]]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local FBABI = 'stdcall'
 --NOTE: "char" is unsigned in alien; the signed byte is called "byte". joy.

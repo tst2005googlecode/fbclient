@@ -4,8 +4,7 @@
 	full error message.
 	adds some overhead, so it's not loaded automatically, but it's used automatically if loaded.
 
-	codes[code_name] = code
-	code_lookup[code] = code_name
+	_M[code] = code_name
 
 	Based on the latest include/gen/iberror.h located at:
 		http://firebird.cvs.sourceforge.net/viewvc/*checkout*/firebird/firebird2/src/include/gen/iberror.h
@@ -1061,8 +1060,5 @@ local codes = {
 	isc_trace_mandatory_switch_miss     = 337182760,
 }
 
-return {
-	codes = codes,
-	code_lookup = index(codes),
-}
+return index(codes)
 

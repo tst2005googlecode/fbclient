@@ -10,7 +10,7 @@
 
 ]]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local alien = require 'alien'
 

@@ -9,7 +9,7 @@
 
 ]]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local pb = require 'fbclient.pb'
 

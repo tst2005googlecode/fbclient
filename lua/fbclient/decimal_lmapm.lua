@@ -22,7 +22,7 @@
 
 ]=]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local mapm = require 'mapm'
 local xsqlvar_class = require('fbclient.xsqlvar').xsqlvar_class

@@ -22,7 +22,7 @@
 
 ]=]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local bc = require 'bc'
 local xsqlvar_class = require('fbclient.xsqlvar').xsqlvar_class

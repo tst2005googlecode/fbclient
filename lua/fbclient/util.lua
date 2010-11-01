@@ -49,7 +49,7 @@ local print = print
 local select = select
 local alien = require 'alien'
 
-module(...) --use of require'fbclient.init' on this module would create a circular dependency
+module(...) --require'fbclient.module' on this module would create a circular dependency
 
 --enumerate a table's keys into an array in no particular order
 function index(t)
@@ -183,11 +183,12 @@ local function dump_recursive(v,k,i,trace,level)
 	local indent = 2
 	if level and i > level then return end
 	if applicable(v,'__pairs') and not applicable(v, '__tostring') then
+		local typ = type(v) == 'table' and '['..tostring(v)..']' or type(v)
 		if trace[v] then
-			print((' '):rep(i*indent)..(k and '['..tostring(k)..'] => ' or '')..'<traced>')
+			print((' '):rep(i*indent)..(k and '['..tostring(k)..'] => ' or '')..'<traced> '..typ)
 		else
 			trace[v] = true
-			print((' '):rep(i*indent)..(k and '['..tostring(k)..'] => ' or '')..type(v))
+			print((' '):rep(i*indent)..(k and '['..tostring(k)..'] => ' or '')..typ)
 			for kk,vv in pairs(v) do
 				kk = applicable(kk,'__tostring') and kk or '('..type(kk)..')'
 				dump_recursive(vv,kk,i+1,trace,level)
@@ -199,8 +200,10 @@ local function dump_recursive(v,k,i,trace,level)
 end
 
 --table dump for debugging purposes
-function dump(v,level)
-	local trace = setmetatable({},{ __mode = 'k' })
-	dump_recursive(v,nil,nil,trace,level)
+function dump(...)
+	for i=1,select('#',...) do
+		dump_recursive(select(i,...),nil,nil,{})
+	end
+	return ...
 end
 

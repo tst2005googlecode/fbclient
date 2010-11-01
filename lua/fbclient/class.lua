@@ -135,7 +135,7 @@
 
 ]=]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local api = require 'fbclient.wrapper' --this module is based on the procedural wrapper
 local oo = require 'loop.base' --we use LOOP for classes so you can extend them if you want
@@ -714,7 +714,7 @@ function statement_class:setparams(...)
 end
 
 function statement_class:getvalues(...)
-	if not select(1,...) then
+	if select('#',...) == 0 then
 		local t = {}
 		for i,col in ipairs(self.columns) do
 			t[i] = col:get()

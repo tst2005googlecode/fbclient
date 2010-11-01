@@ -61,7 +61,7 @@
 
 ]=]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local svapi   = require 'fbclient.status_vector'
 local bpb     = require 'fbclient.bpb'

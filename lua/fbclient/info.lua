@@ -8,7 +8,7 @@
 
 ]]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 --end codes that can terminate an info string.
 local status_codes = {

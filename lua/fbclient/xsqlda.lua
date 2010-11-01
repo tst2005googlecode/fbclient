@@ -24,7 +24,7 @@
 
 ]=]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local sqltypes = {
 	SQL_TEXT        = 452,

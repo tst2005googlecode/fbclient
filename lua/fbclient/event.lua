@@ -10,7 +10,7 @@
 
 ]=]
 
-module(...,require 'fbclient.init')
+module(...,require 'fbclient.module')
 
 local fbapi		= require 'fbclient.binding'
 local fbtry		= require('fbclient.status_vector').try
