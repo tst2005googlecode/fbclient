@@ -37,6 +37,7 @@ function test_everything(env)
 		function_args = true,
 		procedure_args = true,
 	}
+	local sc0 = schema{options = options}
 	local sc1 = schema{options = options}
 	local sc2 = schema{options = options}
 
@@ -45,13 +46,16 @@ function test_everything(env)
 	sc1.domains:load(tr)
 	sc1.tables:load(tr, 'RDB$RELATIONS')
 	sc1.tables:load(tr, 'RDB$INDICES')
+
 	sc2.domains:load(tr)
 	sc2.tables:load(tr, 'RDB$RELATIONS')
 	sc2.tables:load(tr, 'RDB$DATABASE')
-	sc2.tables.elements['RDB$RELATIONS'].fields.NAME = 'NEW_NAME'
-	dump(sc1,sc2)
-	for action, old_e, new_e in sc2:compare(sc1) do
-		print(action, old_e, new_e)
+	--dump(sc2.tables.elements['RDB$RELATIONS'].fields)
+	sc2.tables.elements['RDB$RELATIONS'].fields.elements['RDB$RELATION_TYPE'].domain =
+		sc2.domains.elements['RDB$DESCRIPTION']
+	--dump(sc1,sc2)
+	for sql in sc2:diff(sc1) do
+		print(sql)
 	end
 
 	trace('load all')

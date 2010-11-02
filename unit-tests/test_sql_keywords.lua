@@ -81,11 +81,11 @@ local function print_lua()
 		end
 		table.sort(t)
 		for i,k in ipairs(t) do
-			t[i] = k..' = true'
+			t[i] = (k:find'%$' and "['"..k.."']" or k)..' = true'
 		end
 		print('','',table.concat(t,', ')..',')
 		--print('',"'"..table.concat(t,"', '").."',")
-		print('',"}")
+		print('',"},")
 	end
 	print("}")
 end
@@ -113,5 +113,5 @@ end
 
 print_csv()
 print_lua()
-print_csv_all()
+--print_csv_all()
 

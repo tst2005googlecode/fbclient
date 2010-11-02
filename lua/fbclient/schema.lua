@@ -10,6 +10,7 @@
 module(...,require 'fbclient.module')
 
 local oo = require 'loop.simple'
+local sql = require 'fbclient.sql'
 require 'fbclient.blob'
 
 ------------------------------------------------------------------------------
@@ -19,7 +20,7 @@ class fields:
 	key = primary key
 	foreign_keys = {key = lookup key}
 	load_query(self, [keyval])
-	skip_keys = {key1 = true,...}
+	ignore_keys = {key1 = true,...}
 instance fields:
 	foreigns = {key = foreign list}
 ]]
@@ -75,14 +76,14 @@ function objects:refresh(tr, e)
 	self:load(tr, e[self.key])
 end
 
-local function deep_equal(new, old, skip_keys, trace)
+local function deep_equal(new, old, ignore_keys, trace)
 	local trace = trace or {}
 	for k,newv in pairs(new) do
-		if not skip_keys[k] then
+		if not ignore_keys or not ignore_keys[k] then
 			local oldv = old[k]
 			if type(newv) == 'table' and not trace[newv] then
 				trace[newv] = true
-				if not deep_equal(newv, oldv, skip_keys, trace) then
+				if not deep_equal(newv, oldv, ignore_keys, trace) then
 					return false
 				end
 			elseif newv ~= oldv then
@@ -98,29 +99,25 @@ function objects:compare(older)
 		for k,e in pairs(self.elements) do
 			local older_e = older:lookup(e)
 			if older_e then
-				if not deep_equal(e, older_e, self.skip_keys) then
+				if not deep_equal(e, older_e, self.ignore_keys) then
 					coroutine.yield('update', e, older_e)
 				end
 			else
-				coroutine.yield('insert', nil, e)
+				coroutine.yield('insert', e)
 			end
 		end
 		for k,e in pairs(older.elements) do
 			if not self:lookup(e) then
-				coroutine.yield('delete', e)
+				coroutine.yield('delete', nil, e)
 			end
 		end
 	end)
 end
 
 function objects:diff(older)
-	return coroutine.wrap(function()
-		for action, old, new in self:compare(older) do
-			for sql in self.queries[action](self, old, new) do
-				coroutine.yield(sql)
-			end
-		end
-	end)
+	for action, new, old in self:compare(older) do
+		self.queries[action](self, new, old)
+	end
 end
 
 ------------------------------------------------------------------------------
@@ -160,14 +157,22 @@ table_fields = oo.class({
 	queries = {},
 }, objects)
 
+function table_fields.queries:insert(new)
+	coroutine.yield(sql.parse_template('alter table :TABLE_NAME add :NAME :TYPE', new))
+end
+
 function table_fields.queries:update(new, old)
-	local s = 'alter table :old.TABLE_NAME alter :old.NAME '
-	if new.DOMAIN:find('^RDB$') and old.DOMAIN:find('^RDB$') then
-		if new.domain.TYPE ~= old.domain.TYPE then
-			s = s..'type :new.domain.TYPE'..new.domain.TYPE
-		end
+	local s = sql.parse_template('alter table :TABLE_NAME alter :NAME ', old)
+	local new_domain = new.DOMAIN:find('^RDB%$') and new.domain.TYPE or sql.format_name(new.DOMAIN)
+	local old_domain = old.DOMAIN:find('^RDB%$') and old.domain.TYPE or sql.format_name(old.DOMAIN)
+	if new_domain ~= old_domain then
+		s = s..'type '..new_domain
 	end
-	return sql.parse_template(s, function(s) return old[s] or new[s] end)
+	coroutine.yield(s)
+end
+
+function table_fields.queries:delete(_, old)
+	coroutine.yield(sql.parse_template('alter table :TABLE_NAME drop :NAME', old))
 end
 
 table_fields_detail = oo.class({
@@ -212,7 +217,8 @@ end
 ------------------------------------------------------------------------------
 tables = oo.class({
 	type = 'TABLE',
-	key = 'NAME'
+	key = 'NAME',
+	queries = {},
 }, objects)
 
 function tables:load_query(name)
@@ -248,16 +254,29 @@ function tables:load(tr, name)
 	end
 end
 
-function tables:alter_queries(older)
-	return [[
-		alter table :NAME
-	]]
+function tables.queries:insert(new)
+	local t = {}
+	for name, field in pairs(new.fields.elements) do
+		local typ = field.DOMAIN:find'^RDB%$' and field.domain.TYPE or sql.format_name(field.DOMAIN)
+		t[#t+1] = sql.format_name(field.NAME)..' '..typ
+	end
+	coroutine.yield(sql.parse_template('create table :NAME (\n\t'..table.concat(t, ',\n\t')..'\n)', new))
 end
+
+function tables.queries:update(new, old)
+	new.fields:diff(old.fields)
+end
+
+function tables.queries:delete(_, old)
+	coroutine.yield(sql.parse_template('drop table :NAME', old))
+end
+
 
 ------------------------------------------------------------------------------
 domains = oo.class({
 	type = 'DOMAIN',
-	key = 'NAME'
+	key = 'NAME',
+	queries = {},
 }, objects)
 
 function domains:load_query(name)
@@ -300,6 +319,19 @@ function domains:load_query(name)
 			(f.rdb$system_flag = ? or ? is null)
 			and (f.rdb$field_name = ? or ? is null)
 		]], system_flag, system_flag, name, name
+end
+
+function domains.queries:insert(new)
+	return sql.parse_template('create domain :NAME', new)
+end
+
+function domains.queries:update(new, old)
+	local t = {NAME = old.NAME}
+	return sql.parse_template('alter domain :NAME', t)
+end
+
+function domains.queries:delete(_, old)
+	return sql.parse_template('drop domain :NAME', old)
 end
 
 ------------------------------------------------------------------------------
@@ -646,6 +678,17 @@ function schema:compare(older)
 			for action, old_e, new_e in self[list_name]:compare(older[list_name]) do
 				coroutine.yield(action, old_e, new_e)
 			end
+		end
+	end)
+end
+
+function schema:diff(older)
+	return coroutine.wrap(function()
+		for i,list_name in ipairs{
+			'domains',
+			'tables',
+		} do
+			self[list_name]:diff(older[list_name])
 		end
 	end)
 end

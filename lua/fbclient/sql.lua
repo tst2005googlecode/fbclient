@@ -45,3 +45,9 @@ function parse_template(s,t)
 	return s
 end
 
+if false then
+	print(format_name('TABLE','Firebird 2.5.0'))
+	print(format_name('"TABLEX"','Firebird 2.5.0'))
+	print(format_name('"TABLEX"YY"','Firebird 2.5.0'))
+end
+
