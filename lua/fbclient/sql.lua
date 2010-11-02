@@ -11,14 +11,13 @@
 
 module(...,require 'fbclient.module')
 
-local sql_keywords = require 'fbclient.sql_keywords'
+local keywords = require 'fbclient.sql_keywords'
 local lpeg = require 'lpeg'
 
 --quote an object name
-function format_name(s, compatibility_mode)
+function format_name(s, quoting_mode)
 	s = s:match('^%"([%u_]-)"$') or s --de-quote all-uppercase-and-no-spaces names
-	if compatibility_mode == 'all' then
-	return fb_keywords[s]
+	return (not quoting_mode or keywords[quoting_mode][s]) and '"'..s..'"' or s
 end
 
 --quote a string constant
@@ -44,10 +43,5 @@ function parse_template(s,t)
 	s = s:gsub('%:("?[%w_%.]+"?)', function(s) return format_name(f(s)) end)
 	s = s:gsub('%%("?[%w_%.]+"?)', function(s) return format_string(f(s)) end)
 	return s
-end
-
-if __UNITTESTING then
-	--...
-
 end
 
