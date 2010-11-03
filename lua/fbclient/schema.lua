@@ -255,12 +255,18 @@ function tables:load(tr, name)
 end
 
 function tables.queries:insert(new)
-	local t = {}
+	local col_defs = {}
 	for name, field in pairs(new.fields.elements) do
-		local typ = field.DOMAIN:find'^RDB%$' and field.domain.TYPE or sql.format_name(field.DOMAIN)
-		t[#t+1] = sql.format_name(field.NAME)..' '..typ
+		local col_type = field.DOMAIN:find'^RDB%$' and field.domain.TYPE or sql.format_name(field.DOMAIN)
+		t[#t+1] = sql.format_name(field.NAME)..' '..col_type
 	end
-	coroutine.yield(sql.parse_template('create table :NAME (\n\t'..table.concat(t, ',\n\t')..'\n)', new))
+
+
+
+	sql.parse_template([=[CREATE TABLE :NAME [EXTERNAL FILE '%filespec']  ]=]
+	(<col_def> [, <col_def> | <tconstraint> …]);
+
+	coroutine.yield(sql.parse_template('create table :NAME (\n\t'..table.concat(col_defs, ',\n\t')..'\n)', new))
 end
 
 function tables.queries:update(new, old)

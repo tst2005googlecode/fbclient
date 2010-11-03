@@ -1,53 +1,59 @@
 --[[
-	SQL parsing and formatting specific to Firebird
-
-	format_name(s) -> s
-	format_string(s) -> s
-
-	parse_statements(s) -> t
-	parse_template(s,f|t) -> s
+	Firebird-specific SQL formatting specific
 
 ]]
 
 module(...,require 'fbclient.module')
 
 local keywords = require 'fbclient.sql_keywords'
-local lpeg = require 'lpeg'
 
---quote an object name
-function format_name(s, quoting_mode)
+function S(s) --string, subject to quoting of apostrophes
+	return s
+end
+
+function K(s) --keywords, subject to case change
+	return s
+end
+
+function N(s) --name, subject to un-double-quoting of non-reserved keywords and double-quoting of reserved keywords
 	s = s:match('^%"([%u_]-)"$') or s --de-quote all-uppercase-and-no-spaces names
 	return (not quoting_mode or keywords[quoting_mode][s]) and '"'..s..'"' or s
 end
 
---quote a string constant
-function format_string(s)
+function L(s) --literal
 	return s
 end
 
---splits a string containing multiple sql statements separated by ';'
---implements 'SET TERM'
-function parse_statements(s)
-	return {s}
+function E(s) --expression
+	return s
 end
 
---replace :NAME and %NAME placeholders from a text with values from a table or the result of a function
---:: and %% are replaced with : and % respectively
-function parse_template(s,t)
-	local f = t
-	if type(t) == 'table' then
-		function f(s)
-			return t[s]
-		end
+--Concatenate arguments; a nil or false argument results in a nil expression; true arguments are ignored
+function C(sep,...)
+	--
+end
+
+--Concatenate Optional arguments; a nil or false argument ignores the argument; true arguments are ignored
+function CO(sep,...)
+	--
+end
+
+function I(f, t, sep) --concatenate the results of mapping f over t
+	local ts = {}
+	for k,v in pairs(t) do
+		ts[#ts+1] = f(k,v)
 	end
-	s = s:gsub('%:("?[%w_%.]+"?)', function(s) return format_name(f(s)) end)
-	s = s:gsub('%%("?[%w_%.]+"?)', function(s) return format_string(f(s)) end)
-	return s
+	return table.concat(ts, sep)
 end
 
-if false then
-	print(format_name('TABLE','Firebird 2.5.0'))
-	print(format_name('"TABLEX"','Firebird 2.5.0'))
-	print(format_name('"TABLEX"YY"','Firebird 2.5.0'))
+function run(f,...)
+	local fenv = getfenv(f)
+	local function helper(...)
+		setfenv(f, fenv)
+		return ...
+	end
+	local newfenv = setmetatable({}, {__index = function(t,k) return _M[k] or fenv end})
+	setfenv(f, newfenv)
+	return helper(f(...))
 end
 
