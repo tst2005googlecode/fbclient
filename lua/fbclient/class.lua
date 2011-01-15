@@ -508,13 +508,11 @@ end
 
 function transaction_class:commit_retaining()
 	assert(self.handle, 'transaction closed')
-	self:close_all_statements()
 	api.tr_commit_retaining(self.fbapi, self.sv, self.handle)
 end
 
 function transaction_class:rollback_retaining()
 	assert(self.handle, 'transaction closed')
-	self:close_all_statements()
 	api.tr_rollback_retaining(self.fbapi, self.sv, self.handle)
 end
 
